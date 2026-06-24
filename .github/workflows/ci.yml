@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  backend:
+    name: Backend (lint · test · build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Lint (ruff)
+        run: ruff check .
+
+      - name: Test (pytest)
+        run: pytest
+
+      - name: Build check (app imports)
+        run: python -c "from app.main import app; print('app ok:', app.title)"
+
+  ios-build:
+    name: iOS (build)
+    runs-on: macos-14
+    # No Xcode project committed yet (scaffolded on a Mac in a later task).
+    # Skips cleanly until ios/VidLingo.xcodeproj exists.
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build app if Xcode project exists
+        run: |
+          if [ -d ios/VidLingo.xcodeproj ]; then
+            xcodebuild -project ios/VidLingo.xcodeproj \
+              -scheme VidLingo \
+              -destination 'platform=iOS Simulator,name=iPhone 15' \
+              build
+          else
+            echo "No Xcode project yet — skipping iOS build."
+          fi
