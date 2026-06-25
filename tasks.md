@@ -2,232 +2,162 @@
 
 | Field | Value |
 |---|---|
-| Doc version | v1.0 |
-| Companion to | `PRD_v1.md`, `architecture.md` |
-| Total subtasks | 30 |
-| Sequencing | Phases are roughly ordered; within a phase, tasks can overlap. Dependencies noted per task. |
+| Doc version | v2.0 (re-scoped to a daily-use MVP with a real backend) |
+| Companion to | `PRD_v1.md`, `architecture.md` (esp. ADR-001: YouTube-embed) |
+| MVP tasks | 17 (T01–T17); T01–T02 done |
+| Backlog | parked below (B1–B12) — pull from it only after the MVP is in daily use |
 
-> **How to use this.** Each task is sized to be finishable in roughly a day or two of solo work and ends in something demoable or testable. The "Demo / Done when" line is the acceptance check — and, for the portfolio goal, the thing you can show in an interview. IDs are stable; reference them in commits (e.g. `T07: tappable subtitle layer`).
+## MVP goal (one sentence)
+A usable iOS app where my girlfriend can: **pick a lesson → watch a YouTube video with bilingual subtitles → repeat any sentence and record herself → tap unknown words for meaning → save them → and pull up *other videos containing that word*** — backed by a real server (Docker + AWS) that's ready for more users later.
 
-Legend — **P**: priority (P0 must-have for that version, P1 should, P2 nice). **Maps to**: PRD §, architecture §.
+### What's in vs. out (and why)
+- **In**: video reader, sentence repeat + shadowing/recording, tap-word definition, vocab list, **word→video reverse lookup**, a backend (Postgres + API), a content pipeline, Docker, AWS deploy, minimal multi-user auth.
+- **Out for now** (→ backlog): spaced-repetition review, AI recommendation, difficulty models, AI dialog/role-play, phoneme-level scoring, subscription, social. These are the *expansion* (and the deeper MLE portfolio depth); they don't block daily use.
+- **Why a backend** (vs. a local-only app): the reverse-lookup feature needs a shared content library + word index, you want Docker/AWS practice, and you want room for more users. All three point to a server.
+
+> **Honest scope note.** Adding reverse-lookup + shadowing + a server roughly doubles the minimal MVP. It's still one coherent, finishable loop with a clear finish line (Milestone M1). If it ever feels heavy, the cut line is: ship T01–T17 **minus T16 (reverse lookup)**, which is the one feature that depends on having lots of content.
+
+Legend — **P**: P0 = core daily loop, P1 = should, P2 = nice. **Maps to**: PRD §, arch §.
 
 ---
 
-## Phase 0 — Foundations (T01–T05)
+## Done
+- **T01 ✅** Repo scaffold + CI (backend FastAPI `/health`, iOS placeholder, GitHub Actions).
+- **T02 ✅** `LessonPackage` schema + validator (structure + semantic checks; YouTube-embed shape per ADR-001).
 
-### T01 · Repo, project scaffold & CI
-- **Do**: Init git repo, iOS app skeleton (SwiftUI), backend skeleton (FastAPI), shared `.editorconfig`/lint, basic CI (lint + test + build).
-- **Maps to**: arch §4, §5, §12.
-- **Depends on**: —
-- **Demo / Done when**: `main` builds the empty app and the API health endpoint in CI green.
+---
 
-### T02 · `LessonPackage` schema & validator
-- **Do**: Define the JSON schema for a lesson package (video meta + sentences[start_ms/end_ms/text_en/text_zh/difficulty] + token spans + index rows). Write a schema validator usable in CI.
-- **Maps to**: PRD §6.1, §8; arch §3, §6, §12.
-- **Depends on**: T01
-- **Demo / Done when**: A hand-authored sample package validates; a malformed one fails CI.
+## Phase A — Backend foundation (T03–T06)
 
-### T03 · Core data model & migrations (backend)
-- **Do**: Implement Postgres schema from arch §5.2 (Video, Sentence, Token, WordVideoIndex, User, VocabItem, Event, ReviewSchedule, Entitlement) with migrations.
-- **Maps to**: arch §5.2
-- **Depends on**: T01
-- **Demo / Done when**: Migrations run clean; seed script inserts one sample video + sentences.
+### T03 · Data model & migrations (Postgres)
+- **Do**: Implement schema: `lesson/video` (incl. `youtube_id`), `sentence`, `token`, `word_index` (lemma → sentence → youtube_id → start_ms), `user`, `vocab_item`. Migrations + seed script.
+- **Maps to**: arch §5.2; ADR-001
+- **Depends on**: T02
+- **Done when**: Migrations run clean; seed inserts one lesson + sentences + tokens.
 
-### T04 · Auth & user bootstrap
-- **Do**: Minimal account creation + session/token auth (`user-api`). Single-user is fine for MVP but keep the model multi-user.
+### T04 · Minimal auth / user accounts (multi-user ready)
+- **Do**: Lightweight account creation + token auth. Start simple (username/password or device-id), but model it as real users so multi-user works later.
 - **Maps to**: arch §5.1
 - **Depends on**: T03
-- **Demo / Done when**: App can create a user and make an authenticated call.
+- **Done when**: App can create a user and make authenticated calls; data is scoped per user.
 
-### T05 · Event ingest endpoint + local event log
-- **Do**: `POST /events` (batched, append-only) on backend; on-device SQLite event log + emitter (`Core/Analytics`). This is the flywheel foundation.
-- **Maps to**: arch §3 (principle 4), §5.1, §7
-- **Depends on**: T03, T04
-- **Demo / Done when**: A tap event logged on-device appears in the backend event table after sync.
+### T05 · Content API (lessons + reverse lookup)
+- **Do**: Endpoints: list lessons (theme/difficulty), get a lesson's `LessonPackage`, and **`GET /words/{lemma}/occurrences`** → other sentences/videos containing the word (powers reverse lookup).
+- **Maps to**: PRD §6.3, §6.4; arch §5.1
+- **Depends on**: T03
+- **Done when**: Given a seeded lemma, the API returns its occurrences across lessons.
+
+### T06 · Vocab API (per-user)
+- **Do**: Save/list/delete vocab items (lemma/phrase + source sentence + added time + mastery flag), scoped to the user.
+- **Maps to**: PRD §6.2; arch §5.2
+- **Depends on**: T04
+- **Done when**: Add a word via API, list it back, delete it.
 
 ---
 
-## Phase 1 — V1.0 MVP: the Reader loop (T06–T16)
+## Phase B — Content pipeline & seed library (T07–T08)
 
-> The heart of the product (PRD §6.1). Everything here is P0 unless noted.
+### T07 · Content pipeline v0 (YouTube captions → LessonPackage → DB)
+- **Do**: Script: `youtube_id` → fetch caption track (ASR fallback if none) → sentence-segment with start/end_ms → translate (LLM/API) → tokenize/lemmatize/POS into token spans → build `LessonPackage` + `word_index` rows → validate (T02) → load to DB. Idempotent; flags videos with no usable captions.
+- **Maps to**: PRD §8; arch §6; ADR-001
+- **Depends on**: T02, T03
+- **Done when**: Running it on a `youtube_id` produces a validated lesson in the DB, ready to serve.
 
-### T06 · PlayerEngine: sentence-precise playback (YouTube IFrame)
-- **Do**: Wrap `YTPlayerView` (youtube-ios-player-helper / IFrame API) driven by sentence timestamps: play/pause on tap, `seekTo` sentence start, auto-pause at sentence end via a polled time observer. (ADR-001 — embed, not `AVPlayer`.)
-- **Maps to**: PRD §6.1.2; arch §0 ADR-001, §4.1
-- **Depends on**: T02
-- **Demo / Done when**: A YouTube lesson plays embedded; tapping toggles play/pause; sentence boundaries respected (auto-pause at sentence end).
+### T08 · Ingest 10–15 starter lessons
+- **Do**: Pick 10–15 YouTube videos with good captions covering her high-frequency scenarios (greetings, café/ordering, travel, small talk). Run the pipeline; quick manual proof-read. Record source + license in `content/sources.md`.
+- **Maps to**: PRD §2.1, §13 Q1
+- **Depends on**: T07
+- **Done when**: 10–15 lessons live; reverse lookup (T05) returns multiple hits for common words.
 
-### T07 · Swipe navigation + single-sentence loop + speed
-- **Do**: Left/right swipe = prev/next sentence; single-sentence loop button; rates 0.5/0.75/1/1.25/1.5×; draggable progress bar snapping to sentence start.
-- **Maps to**: PRD §6.1.2
-- **Depends on**: T06
-- **Demo / Done when**: All transport controls work smoothly on the sample video.
+---
 
-### T08 · Tappable subtitle renderer + 3-state subtitle mode
-- **Do**: Custom subtitle layer rendering token spans as tappable; current-sentence highlight; mode toggle 中英 / 仅英 / 仅中 / 关闭.
-- **Maps to**: PRD §6.1.1, §6.1.3
-- **Depends on**: T02, T06
-- **Demo / Done when**: Words are individually tappable; all four subtitle modes render correctly.
+## Phase C — Containerize & deploy (your Docker / AWS practice)
 
-### T09 · Word definition card + dictionary lookup
-- **Do**: Bottom card on word-tap: phonetic, POS, gloss, in-context meaning, TTS playback. On-device dictionary cache backed by `content-api`/dictionary source.
-- **Maps to**: PRD §6.1.3; arch §4.2 (< 200ms)
-- **Depends on**: T08
-- **Demo / Done when**: Tapping a word shows the card in < 200ms (cached) with audio playback.
+### T09 · Dockerize (Dockerfile + docker-compose)
+- **Do**: Backend `Dockerfile`; `docker-compose.yml` running API + Postgres locally; env via `.env`; one-command local bring-up. Run migrations in the container.
+- **Maps to**: arch §12
+- **Depends on**: T05 (something to run)
+- **Done when**: `docker compose up` serves `/health` and the content API with a real Postgres.
 
-### T10 · Phrase selection (long-press)
-- **Do**: Long-press to select multi-word phrases; card adapts to phrase.
-- **Maps to**: PRD §6.1.3
-- **Priority**: P1
+### T10 · Deploy to AWS
+- **Do**: Push image to **ECR**; run on **ECS Fargate** behind an ALB (HTTPS), with **RDS Postgres**. *(Simpler starter alt: one EC2 running docker-compose — fine to begin, then graduate to ECS.)* Secrets via SSM/Secrets Manager.
+- **Maps to**: arch §12
 - **Depends on**: T09
-- **Demo / Done when**: A 2–3 word phrase can be selected and looked up.
-
-### T11 · ShadowingRecorder: record, compare, lightweight score
-- **Do**: Record current sentence, replay vs. original, lightweight score (volume/duration/completion). Define `PronunciationScorer` protocol for the future SDK swap.
-- **Maps to**: PRD §6.1.4; arch §4.2
-- **Depends on**: T06
-- **Demo / Done when**: User records a sentence, hears playback, sees a basic score; protocol seam exists.
-
-### T12 · Vocab book (add / list / navigate back)
-- **Do**: "Add to vocab" from word card; vocab list with word/phrase, source thumbnail, source sentence, added time; tap → jump back to source sentence. Mastery flag + delete.
-- **Maps to**: PRD §6.2
-- **Depends on**: T09
-- **Demo / Done when**: Add a word, see it in the list, tap to return to its sentence in the video.
-
-### T13 · Browse by theme × difficulty
-- **Do**: Home grid filtering by theme (ordering/small-talk/travel/work…) and difficulty (easy/medium/hard, manual labels for MVP).
-- **Maps to**: PRD §6.3
-- **Depends on**: T03, content from T15/T16
-- **Demo / Done when**: Filtering shows the right videos; tapping opens the Reader.
-
-### T14 · LessonPackage metadata cache (no video) — *reduced scope*
-- **Do**: Cache the `LessonPackage` metadata (subtitle/token/timestamp JSON) on-device so the Reader overlay loads instantly; video still streams live from YouTube. No offline *video* (ADR-001).
-- **Maps to**: arch §0 ADR-001, §4.3
-- **Priority**: P1 (was P0; offline video dropped)
-- **Depends on**: T02, T06
-- **Demo / Done when**: Lesson metadata loads from cache with no network; video plays when online, fails gracefully when offline.
-
-### T15 · Content pipeline v0: YouTube captions → sentence alignment
-- **Do**: Script: `youtube_id` → fetch caption track (timedtext) → sentence segmentation with start/end_ms. ASR fallback only when captions are missing/poor. Validate caption coverage; idempotent; emits intermediate artifacts.
-- **Maps to**: PRD §8; arch §0 ADR-001, §6 (steps 1–2)
-- **Depends on**: T02
-- **Demo / Done when**: A YouTube video id produces a sentence-timestamped transcript (or is flagged "no usable captions").
-
-### T16 · Content pipeline v0: translate + tokenize + package + publish
-- **Do**: Translate sentences (LLM/API), tokenize/lemmatize/POS into token spans, assemble + validate `LessonPackage` (referencing `youtube_id`), register in DB. Manual review step (approve/correct). No media upload — YouTube hosts the video.
-- **Maps to**: PRD §8; arch §0 ADR-001, §6 (steps 3–4, 7–8)
-- **Depends on**: T15, T02, T03
-- **Demo / Done when**: One end-to-end YouTube video becomes a playable (embedded), validated, published lesson. **← V1.0 demo milestone.**
+- **Done when**: The API is reachable at a public HTTPS URL from the phone; DB persists.
 
 ---
 
-## Phase 2 — V1.5: context-web + review (T17–T21)
+## Phase D — iOS app: the daily-use loop (T11–T17)
 
-### T17 · Difficulty labelling v1 (rules)
-- **Do**: Heuristic `DifficultyEstimator` (CEFR word-frequency bands, sentence length, speech rate) wired into the pipeline (step 5).
-- **Maps to**: PRD §6.3; arch §6 (step 5), §3 (rules→model)
-- **Depends on**: T16
-- **Demo / Done when**: Pipeline auto-assigns easy/medium/hard; spot-check agrees with intuition.
-
-### T18 · WordVideoIndex builder (inverted index)
-- **Do**: Pipeline step building `lemma → sentence → video → start_ms` rows across the whole library.
-- **Maps to**: PRD §6.4; arch §5.2, §6 (step 6)
-- **Depends on**: T16
-- **Demo / Done when**: Querying a lemma returns all its occurrences across videos.
-
-### T19 · Word↔video reverse lookup (API + UI)
-- **Do**: `content-api` endpoint + "see more video examples" entry on the word card → list of clips → tap jumps to that sentence.
-- **Maps to**: PRD §6.1.3, §6.4
-- **Depends on**: T18, T09
-- **Demo / Done when**: From a word card, browse and jump into another video where the word appears. **← differentiator demo.**
-
-### T20 · Review scheduling (SM-2 / Leitner)
-- **Do**: `review-svc` scheduling vocab items by interval/ease; due-queue API; client `Feature/Review` tab.
-- **Maps to**: PRD §6.5; arch §5.1
-- **Depends on**: T12
-- **Demo / Done when**: Added words surface for review on schedule.
-
-### T21 · Contextual review UI + search & favorites
-- **Do**: Review presents the word *in its original video sentence* (not a bare card); add search and a favorites/collection. Vocab grouping.
-- **Maps to**: PRD §6.2, §6.5
-- **Priority**: P1
-- **Depends on**: T20, T14
-- **Demo / Done when**: Reviewing replays the source sentence; search finds vocab/videos.
-
----
-
-## Phase 3 — V2.0: personalization & the MLE spine (T22–T26)
-
-### T22 · Feature store + feature-build job
-- **Do**: Define user/content feature schemas (clicked word-families, themes, completion rates, level); batch job from event lake → feature tables (Parquet/Postgres).
-- **Maps to**: arch §7
+### T11 · YouTube embed player + sentence-by-sentence
+- **Do**: `YTPlayerView` (IFrame API) driven by sentence timestamps: play/pause on tap, prev/next sentence (swipe), **single-sentence repeat/loop**, auto-pause at sentence end (polled time observer), speeds 0.5–1.5×.
+- **Maps to**: PRD §6.1.2; arch ADR-001, §4.1
 - **Depends on**: T05
-- **Demo / Done when**: Running the job produces documented, inspectable feature tables.
+- **Done when**: A lesson plays embedded; she can repeat any single sentence on loop and step sentence-by-sentence.
 
-### T23 · Eval harness + model registry conventions
-- **Do**: Held-out sets, metric definitions (ranking metrics; difficulty-vs-human agreement), versioned model artifacts with training-data hash + metrics manifest.
-- **Maps to**: arch §7 (the credibility piece)
-- **Depends on**: T22
-- **Demo / Done when**: A dummy model is registered with metrics; eval report regenerates reproducibly. **← strongest MLE artifact.**
-
-### T24 · Onboarding placement test
-- **Do**: 5–10 item quick test (listen/choose/shadow) → initial level.
-- **Maps to**: PRD §6.6
-- **Depends on**: T11, T04
-- **Demo / Done when**: New user completes test and receives a starting level + difficulty.
-
-### T25 · Recommender (two-stage) + serving
-- **Do**: Candidate gen (level/theme filter) → ranking (behavioural model from features) → business rules (dedup/diversity/license). Serve via `ml-serving`; Discover feed.
-- **Maps to**: PRD §6.6; arch §7, §8
-- **Depends on**: T22, T23, T13
-- **Demo / Done when**: Feed reorders sensibly per user; predictions logged back to event lake.
-
-### T26 · Adaptive difficulty controller + difficulty model v2
-- **Do**: Feedback controller (completion + tap-density → difficulty nudge); train difficulty model v2 calibrated on behaviour, behind existing `DifficultyEstimator` interface.
-- **Maps to**: PRD §6.6; arch §6, §8
-- **Depends on**: T17, T23
-- **Demo / Done when**: Difficulty surfaced to a user adapts over sessions; v2 beats rules on eval.
-
----
-
-## Phase 4 — V3.0: output & practice (T27–T28)
-
-### T27 · DialogOrchestrator over Claude (scenario role-play)
-- **Do**: `ml-serving` dialog orchestrator: scenario system prompt + level/vocab constraints + guardrails; turn caps + token logging; end-of-session feedback (nativeness, better phrasings).
-- **Maps to**: PRD §6.7; arch §9
-- **Depends on**: T24, T05
-- **Demo / Done when**: A café-ordering role-play stays at the user's level and returns useful feedback; token cost logged.
-
-### T28 · Phoneme-level pronunciation scoring
-- **Do**: Integrate a pronunciation-eval SDK behind the existing `PronunciationScorer` protocol; consent + privacy flow for uploads.
-- **Maps to**: PRD §6.1.4, §10; arch §4.2, §9
+### T12 · Tappable subtitles + bilingual modes
+- **Do**: Subtitle layer rendering token spans as tappable; current-sentence highlight; mode toggle 中英 / 仅英 / 仅中 / 关闭.
+- **Maps to**: PRD §6.1.1, §6.1.3
 - **Depends on**: T11
-- **Demo / Done when**: Shadowing returns phoneme-level scores; consent gated.
+- **Done when**: Words are individually tappable; all four subtitle modes render.
+
+### T13 · Word definition card + add to vocab
+- **Do**: On word-tap, bottom card: phonetic, POS, gloss, in-context meaning, audio (TTS). Buttons: **Add to vocab**, **More videos with this word** (→ T16). Dictionary source: a free dictionary API/dataset, cached on-device.
+- **Maps to**: PRD §6.1.3; arch §4.2
+- **Depends on**: T12, T06
+- **Done when**: Tapping a word shows meaning fast; "Add to vocab" persists via the vocab API.
+
+### T14 · Shadowing — record & hear yourself
+- **Do**: On the current sentence: 🎤 record → replay **her own recording** and compare to the original; lightweight feedback (duration/volume/completion). Define a `PronunciationScorer` seam for a future real engine.
+- **Maps to**: PRD §6.1.4; arch §4.2
+- **Depends on**: T11
+- **Done when**: She records a sentence, plays back her own voice next to the original.
+
+### T15 · Vocab list
+- **Do**: List saved words/phrases (word, source video thumbnail, original sentence, added time); tap → jump back to that sentence in the lesson; mark mastered / delete.
+- **Maps to**: PRD §6.2
+- **Depends on**: T13
+- **Done when**: Saved words appear; tapping one returns to its source sentence.
+
+### T16 · Word → video reverse lookup (the differentiator)
+- **Do**: From the word card (and/or a swipe gesture — exact gesture TBD in UI), open a list of **other videos/sentences containing that word** (via T05); tap one → open that lesson at that sentence.
+- **Maps to**: PRD §6.4 (差异化亮点)
+- **Depends on**: T05, T13
+- **Done when**: For an unknown word, she sees other real videos using it and can jump straight in.
+
+### T17 · Home / lesson browse
+- **Do**: Home screen listing lessons by theme/difficulty; tap → open the Reader.
+- **Maps to**: PRD §6.3
+- **Depends on**: T05
+- **Done when**: Browsing shows the seeded lessons; tapping opens playback.
 
 ---
 
-## Phase 5 — Reserved seams & wrap-up (T29–T30)
+## Milestone
 
-### T29 · Reserved seams: Entitlement + SocialEventBus stubs
-- **Do**: `EntitlementService` returning `free` + `entitlement.can(feature)` gate call sites; no-op `SocialEventBus` publishing achievement events. No real subscription/social UI.
-- **Maps to**: PRD Ch.13 Q3/Q4; arch §10
-- **Depends on**: T04, T05
-- **Demo / Done when**: Feature gates route through entitlement; achievement events publish to the no-op bus — both swappable later.
-
-### T30 · Portfolio write-up: metrics dashboard + product story
-- **Do**: North-Star instrumentation (weekly effective learned sentences) + a retrospective doc telling the product/ML story with data and trade-offs (why A-class first, what was cut and why).
-- **Maps to**: PRD §4, §12; arch §7, §13
-- **Depends on**: T05, T23, T25
-- **Demo / Done when**: A dashboard shows the North Star + funnel; the write-up is interview-ready. **← the job-hunt deliverable.**
-
----
-
-## Milestone map
-
-| Milestone | Tasks | Demoable outcome |
+| Milestone | Tasks | Outcome |
 |---|---|---|
-| **M1 — V1.0 MVP** | T01–T16 | Full Reader loop:精读 + 跟读 + 生词本 on real content |
-| **M2 — V1.5** | T17–T21 | Word↔video reverse lookup + contextual spaced review |
-| **M3 — V2.0** | T22–T26 | Placement test + recommender + adaptive difficulty, all evaluated |
-| **M4 — V3.0** | T27–T28 | AI role-play + phoneme scoring |
-| **M5 — Reserve & story** | T29–T30 | Monetisation/social seams in place; portfolio narrative done |
+| **M1 — Daily-use MVP** | T01–T17 | Full loop she can use every day: watch → repeat → shadow → tap → save → find more videos with that word. Backend live on AWS via Docker. |
+
+---
+
+## Backlog — expansion (do NOT start until M1 is in daily use)
+
+These are the *growth* features and the deeper **MLE portfolio depth** (the reason for the server in the first place). Pull them in one at a time, each its own demo.
+
+| # | Item | Why later |
+|---|---|---|
+| **B1** | CI/CD: auto build+push image, deploy to AWS on `main` | Comes after a manual deploy works (T10) |
+| **B2** | Observability: logs, metrics, cost dashboard (LLM/ASR usage) | Needs real traffic |
+| **B3** | Behavioural **event ingest** + data lake | Foundation for all ML below |
+| **B4** | Spaced-repetition **review** (SM-2 / Leitner) on vocab | Nice retention feature, not core to "try it" |
+| **B5** | **Difficulty model** (rules → learned) | Manual difficulty tags suffice for MVP |
+| **B6** | **Feature store + offline eval harness** | The credible MLE artifact; needs B3 data |
+| **B7** | **Recommendation** (two-stage retrieval/ranking) | Needs content scale + B3/B6 |
+| **B8** | Adaptive difficulty controller | Needs B5/B6 |
+| **B9** | **AI dialog / role-play** over Claude (level-constrained) | V3 feature; cost + guardrails |
+| **B10** | Phoneme-level pronunciation scoring (real SDK) | Upgrades T14's lightweight scorer |
+| **B11** | **Subscription** (reserved seam: entitlement check) | Ch.13 Q4 — designed, not built |
+| **B12** | **Social / sharing** (reserved seam: event bus) | Ch.13 Q3 — designed, not built |
+
+> Portfolio note: B3 → B6 → B7 is the spine of the MLE story (data → features → eval → model → serving). The MVP's backend, Docker, and AWS work (T03–T10) is the infra-engineering half of that same story.
