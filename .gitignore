@@ -36,6 +36,10 @@ xcuserdata/
 # Node (tooling)
 node_modules/
 
+# Local dev database
+*.db
+*.sqlite3
+
 # Data / media (never commit content or large media)
 *.mp4
 *.mov

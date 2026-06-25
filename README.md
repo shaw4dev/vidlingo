@@ -36,6 +36,16 @@ cd backend
 python -m app.content.validate samples/lesson_package.sample.json
 ```
 
+## Database
+SQLAlchemy 2.0 models + Alembic migrations (architecture.md §5.2). Defaults to a
+local SQLite file (`DATABASE_URL`); Postgres in Docker/AWS later.
+```bash
+cd backend
+alembic upgrade head        # create tables
+python -m app.db.seed       # load the sample lesson + demo user
+```
+
 ## Status
 - **T01 ✅** repo scaffold + CI — backend `/health` builds and is tested.
 - **T02 ✅** `LessonPackage` schema + validator (structure + semantic checks); CI validates the sample.
+- **T03 ✅** Postgres data model + Alembic migrations (lessons/sentences/tokens/word_index/users/vocab); `load_package` ingests validated packages; CI runs migrate+seed.

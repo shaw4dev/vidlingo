@@ -33,6 +33,11 @@ jobs:
       - name: Validate sample content packages
         run: python -m app.content.validate samples/lesson_package.sample.json
 
+      - name: Migrations + seed (SQLite smoke test)
+        run: |
+          alembic upgrade head
+          python -m app.db.seed
+
       - name: Build check (app imports)
         run: python -c "from app.main import app; print('app ok:', app.title)"
 
