@@ -1,13 +1,13 @@
 """VidLingo API entrypoint.
 
 A modular monolith (see architecture.md §5.1): feature modules register their
-routers here. For T01 only the health router exists.
+routers here.
 """
 
 from fastapi import FastAPI
 
 from app import __version__
-from app.routers import health
+from app.routers import auth, health
 
 
 def create_app() -> FastAPI:
@@ -17,6 +17,7 @@ def create_app() -> FastAPI:
         summary="Backend for the VidLingo video English-learning app.",
     )
     app.include_router(health.router)
+    app.include_router(auth.router)
     return app
 
 
