@@ -28,5 +28,14 @@ pytest                           # test
 - **backend**: ruff lint → pytest → import/build check.
 - **ios-build**: builds the Xcode project on a macOS runner once it exists (skips until then).
 
+## Content packages
+A `LessonPackage` is the compiled, immutable learning unit (architecture.md §6).
+Schema: `backend/app/content/schema/lesson_package.schema.json`. Validate files:
+```bash
+cd backend
+python -m app.content.validate samples/lesson_package.sample.json
+```
+
 ## Status
 - **T01 ✅** repo scaffold + CI — backend `/health` builds and is tested.
+- **T02 ✅** `LessonPackage` schema + validator (structure + semantic checks); CI validates the sample.

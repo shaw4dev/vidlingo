@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vidlingo.app/schemas/lesson_package.schema.json",
+  "title": "LessonPackage",
+  "description": "Compiled, immutable learning unit: video meta + sentence-level bilingual subtitles + tappable token spans + optional word->occurrence index. See architecture.md §6.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "package_version", "video", "sentences"],
+  "properties": {
+    "schema_version": {
+      "description": "Version of THIS schema the package targets.",
+      "type": "integer",
+      "const": 1
+    },
+    "package_version": {
+      "description": "Monotonic version of this package's content; bumps on any re-publish.",
+      "type": "integer",
+      "minimum": 1
+    },
+    "video": { "$ref": "#/$defs/video" },
+    "sentences": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/sentence" }
+    },
+    "index": {
+      "description": "Optional word->occurrence rows scoped to this package (full cross-library index built in T18).",
+      "type": "array",
+      "items": { "$ref": "#/$defs/indexRow" }
+    }
+  },
+  "$defs": {
+    "video": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title", "theme", "source", "license_tag", "duration_ms", "cdn_url"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "title": { "type": "string", "minLength": 1 },
+        "theme": { "type": "string", "minLength": 1 },
+        "source": { "type": "string", "minLength": 1 },
+        "license_tag": {
+          "description": "Publish gate: unknown-license content must never ship (architecture.md §11).",
+          "type": "string",
+          "enum": ["self_recorded", "public_domain", "licensed", "ugc_consented"]
+        },
+        "duration_ms": { "type": "integer", "minimum": 1 },
+        "cdn_url": { "type": "string", "format": "uri" }
+      }
+    },
+    "sentence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "idx", "start_ms", "end_ms", "text_en", "text_zh", "difficulty", "tokens"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "idx": { "type": "integer", "minimum": 0 },
+        "start_ms": { "type": "integer", "minimum": 0 },
+        "end_ms": { "type": "integer", "minimum": 1 },
+        "text_en": { "type": "string", "minLength": 1 },
+        "text_zh": { "type": "string", "minLength": 1 },
+        "difficulty": { "type": "string", "enum": ["easy", "medium", "hard"] },
+        "tokens": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/token" }
+        }
+      }
+    },
+    "token": {
+      "description": "A tappable span in text_en. char_span = [start, end) offsets into text_en.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["char_span", "surface", "lemma"],
+      "properties": {
+        "char_span": {
+          "type": "array",
+          "items": { "type": "integer", "minimum": 0 },
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "surface": { "type": "string", "minLength": 1 },
+        "lemma": { "type": "string", "minLength": 1 },
+        "pos": { "type": "string" },
+        "dict_ref": { "type": "string" }
+      }
+    },
+    "indexRow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["lemma", "sentence_id", "start_ms"],
+      "properties": {
+        "lemma": { "type": "string", "minLength": 1 },
+        "sentence_id": { "type": "string", "minLength": 1 },
+        "start_ms": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

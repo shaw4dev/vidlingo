@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "package_version": 1,
+  "video": {
+    "id": "vid_smalltalk_001",
+    "title": "Casual greeting",
+    "theme": "small_talk",
+    "source": "self_recorded",
+    "license_tag": "self_recorded",
+    "duration_ms": 6000,
+    "cdn_url": "https://cdn.vidlingo.app/vid_smalltalk_001/master.m3u8"
+  },
+  "sentences": [
+    {
+      "id": "s1",
+      "idx": 0,
+      "start_ms": 0,
+      "end_ms": 2500,
+      "text_en": "How's it going?",
+      "text_zh": "最近怎么样？",
+      "difficulty": "easy",
+      "tokens": [
+        { "char_span": [0, 5], "surface": "How's", "lemma": "how", "pos": "ADV" },
+        { "char_span": [6, 8], "surface": "it", "lemma": "it", "pos": "PRON" },
+        { "char_span": [9, 14], "surface": "going", "lemma": "go", "pos": "VERB", "dict_ref": "go" }
+      ]
+    },
+    {
+      "id": "s2",
+      "idx": 1,
+      "start_ms": 2500,
+      "end_ms": 5200,
+      "text_en": "I'm doing great.",
+      "text_zh": "我挺好的。",
+      "difficulty": "easy",
+      "tokens": [
+        { "char_span": [0, 3], "surface": "I'm", "lemma": "i", "pos": "PRON" },
+        { "char_span": [4, 9], "surface": "doing", "lemma": "do", "pos": "VERB", "dict_ref": "do" },
+        { "char_span": [10, 15], "surface": "great", "lemma": "great", "pos": "ADJ" }
+      ]
+    }
+  ],
+  "index": [
+    { "lemma": "go", "sentence_id": "s1", "start_ms": 0 },
+    { "lemma": "do", "sentence_id": "s2", "start_ms": 2500 }
+  ]
+}

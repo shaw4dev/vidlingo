@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "package_version": 1,
+  "video": {
+    "id": "vid_bad",
+    "title": "Bad license",
+    "theme": "small_talk",
+    "source": "ripped_from_tv",
+    "license_tag": "pirated",
+    "duration_ms": 6000,
+    "cdn_url": "https://cdn.vidlingo.app/vid_bad/master.m3u8"
+  },
+  "sentences": [
+    {
+      "id": "s1",
+      "idx": 0,
+      "start_ms": 0,
+      "end_ms": 2500,
+      "text_en": "Hello there.",
+      "text_zh": "你好。",
+      "difficulty": "trivial",
+      "tokens": []
+    }
+  ]
+}

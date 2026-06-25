@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "package_version": 1,
+  "video": {
+    "id": "vid_sem",
+    "title": "Semantic problems",
+    "theme": "small_talk",
+    "source": "self_recorded",
+    "license_tag": "self_recorded",
+    "duration_ms": 3000,
+    "cdn_url": "https://cdn.vidlingo.app/vid_sem/master.m3u8"
+  },
+  "sentences": [
+    {
+      "id": "s1",
+      "idx": 0,
+      "start_ms": 0,
+      "end_ms": 5000,
+      "text_en": "How's it going?",
+      "text_zh": "最近怎么样？",
+      "difficulty": "easy",
+      "tokens": [
+        { "char_span": [0, 5], "surface": "Hello", "lemma": "hello" },
+        { "char_span": [9, 99], "surface": "going", "lemma": "go" }
+      ]
+    }
+  ],
+  "index": [
+    { "lemma": "go", "sentence_id": "s_missing", "start_ms": 0 }
+  ]
+}
