@@ -5,10 +5,11 @@
     "id": "vid_smalltalk_001",
     "title": "Casual greeting",
     "theme": "small_talk",
-    "source": "self_recorded",
-    "license_tag": "self_recorded",
-    "duration_ms": 6000,
-    "cdn_url": "https://cdn.vidlingo.app/vid_smalltalk_001/master.m3u8"
+    "provider": "youtube",
+    "youtube_id": "dQw4w9WgXcQ",
+    "source": "Example Channel",
+    "license_tag": "youtube_embed",
+    "duration_ms": 6000
   },
   "sentences": [
     {

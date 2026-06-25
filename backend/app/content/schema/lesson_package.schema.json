@@ -33,19 +33,42 @@
     "video": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "title", "theme", "source", "license_tag", "duration_ms", "cdn_url"],
+      "required": ["id", "title", "theme", "provider", "license_tag", "duration_ms"],
+      "allOf": [
+        {
+          "if": { "properties": { "provider": { "const": "youtube" } } },
+          "then": { "required": ["youtube_id"] }
+        }
+      ],
       "properties": {
         "id": { "type": "string", "minLength": 1 },
         "title": { "type": "string", "minLength": 1 },
         "theme": { "type": "string", "minLength": 1 },
-        "source": { "type": "string", "minLength": 1 },
+        "provider": {
+          "description": "Where the media is played from. Embed-only for MVP (architecture.md ADR-001); 'owned' reserved for a future hosted/offline hybrid.",
+          "type": "string",
+          "enum": ["youtube", "owned"]
+        },
+        "youtube_id": {
+          "description": "YouTube video id (11 chars). Required when provider=youtube.",
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{11}$"
+        },
+        "source": {
+          "description": "Attribution / channel name (optional).",
+          "type": "string"
+        },
         "license_tag": {
           "description": "Publish gate: unknown-license content must never ship (architecture.md §11).",
           "type": "string",
-          "enum": ["self_recorded", "public_domain", "licensed", "ugc_consented"]
+          "enum": ["youtube_embed", "cc_by", "public_domain", "self_recorded"]
         },
         "duration_ms": { "type": "integer", "minimum": 1 },
-        "cdn_url": { "type": "string", "format": "uri" }
+        "cdn_url": {
+          "description": "Reserved for provider=owned (hosted/offline hybrid). Unused for YouTube.",
+          "type": "string",
+          "format": "uri"
+        }
       }
     },
     "sentence": {

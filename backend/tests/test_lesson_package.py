@@ -42,6 +42,20 @@ def test_missing_file_is_rejected():
     assert errors and errors[0].startswith("file:")  # no crash
 
 
+def test_youtube_provider_requires_youtube_id():
+    data = json.loads(SAMPLE.read_text(encoding="utf-8"))
+    del data["video"]["youtube_id"]
+    errors = validate_package(data)
+    assert any("youtube_id" in e for e in errors)
+
+
+def test_bad_youtube_id_pattern_rejected():
+    data = json.loads(SAMPLE.read_text(encoding="utf-8"))
+    data["video"]["youtube_id"] = "too-short"
+    errors = validate_package(data)
+    assert any("youtube_id" in e for e in errors)
+
+
 def test_overlap_and_idx_gaps_detected():
     data = json.loads(SAMPLE.read_text(encoding="utf-8"))
     # make sentence 2 overlap sentence 1 and break idx contiguity

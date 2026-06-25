@@ -51,11 +51,11 @@ Legend — **P**: priority (P0 must-have for that version, P1 should, P2 nice). 
 
 > The heart of the product (PRD §6.1). Everything here is P0 unless noted.
 
-### T06 · PlayerEngine: sentence-precise playback
-- **Do**: `AVPlayer` wrapper driven by sentence timestamps: play/pause on tap, seek-to-sentence, auto-pause at sentence end.
-- **Maps to**: PRD §6.1.2; arch §4.1
+### T06 · PlayerEngine: sentence-precise playback (YouTube IFrame)
+- **Do**: Wrap `YTPlayerView` (youtube-ios-player-helper / IFrame API) driven by sentence timestamps: play/pause on tap, `seekTo` sentence start, auto-pause at sentence end via a polled time observer. (ADR-001 — embed, not `AVPlayer`.)
+- **Maps to**: PRD §6.1.2; arch §0 ADR-001, §4.1
 - **Depends on**: T02
-- **Demo / Done when**: Tapping video toggles play/pause; sentence boundaries respected.
+- **Demo / Done when**: A YouTube lesson plays embedded; tapping toggles play/pause; sentence boundaries respected (auto-pause at sentence end).
 
 ### T07 · Swipe navigation + single-sentence loop + speed
 - **Do**: Left/right swipe = prev/next sentence; single-sentence loop button; rates 0.5/0.75/1/1.25/1.5×; draggable progress bar snapping to sentence start.
@@ -100,23 +100,24 @@ Legend — **P**: priority (P0 must-have for that version, P1 should, P2 nice). 
 - **Depends on**: T03, content from T15/T16
 - **Demo / Done when**: Filtering shows the right videos; tapping opens the Reader.
 
-### T14 · ContentCache: offline package download & store
-- **Do**: Download `LessonPackage` (video + subtitle/token data) to device; serve Reader from cache; basic cache management.
-- **Maps to**: PRD §10; arch §3, §4.3
+### T14 · LessonPackage metadata cache (no video) — *reduced scope*
+- **Do**: Cache the `LessonPackage` metadata (subtitle/token/timestamp JSON) on-device so the Reader overlay loads instantly; video still streams live from YouTube. No offline *video* (ADR-001).
+- **Maps to**: arch §0 ADR-001, §4.3
+- **Priority**: P1 (was P0; offline video dropped)
 - **Depends on**: T02, T06
-- **Demo / Done when**: A downloaded lesson plays fully in airplane mode.
+- **Demo / Done when**: Lesson metadata loads from cache with no network; video plays when online, fails gracefully when offline.
 
-### T15 · Content pipeline v0: ASR → sentence alignment
-- **Do**: Script: raw video → ASR API → sentence segmentation with start/end_ms. Idempotent, outputs intermediate artifacts.
-- **Maps to**: PRD §8; arch §6 (steps 1–2)
+### T15 · Content pipeline v0: YouTube captions → sentence alignment
+- **Do**: Script: `youtube_id` → fetch caption track (timedtext) → sentence segmentation with start/end_ms. ASR fallback only when captions are missing/poor. Validate caption coverage; idempotent; emits intermediate artifacts.
+- **Maps to**: PRD §8; arch §0 ADR-001, §6 (steps 1–2)
 - **Depends on**: T02
-- **Demo / Done when**: A raw clip produces sentence-timestamped transcript.
+- **Demo / Done when**: A YouTube video id produces a sentence-timestamped transcript (or is flagged "no usable captions").
 
 ### T16 · Content pipeline v0: translate + tokenize + package + publish
-- **Do**: Translate sentences (LLM/API), tokenize/lemmatize/POS into token spans, assemble + validate `LessonPackage`, upload to object storage/CDN, register in DB. Manual review step (approve/correct).
-- **Maps to**: PRD §8; arch §6 (steps 3–4, 7–8)
+- **Do**: Translate sentences (LLM/API), tokenize/lemmatize/POS into token spans, assemble + validate `LessonPackage` (referencing `youtube_id`), register in DB. Manual review step (approve/correct). No media upload — YouTube hosts the video.
+- **Maps to**: PRD §8; arch §0 ADR-001, §6 (steps 3–4, 7–8)
 - **Depends on**: T15, T02, T03
-- **Demo / Done when**: One end-to-end real clip becomes a playable, validated, published lesson. **← V1.0 demo milestone.**
+- **Demo / Done when**: One end-to-end YouTube video becomes a playable (embedded), validated, published lesson. **← V1.0 demo milestone.**
 
 ---
 

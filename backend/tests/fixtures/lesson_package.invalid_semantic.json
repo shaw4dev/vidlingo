@@ -5,10 +5,10 @@
     "id": "vid_sem",
     "title": "Semantic problems",
     "theme": "small_talk",
-    "source": "self_recorded",
-    "license_tag": "self_recorded",
-    "duration_ms": 3000,
-    "cdn_url": "https://cdn.vidlingo.app/vid_sem/master.m3u8"
+    "provider": "youtube",
+    "youtube_id": "abc123XYZ_-",
+    "license_tag": "youtube_embed",
+    "duration_ms": 3000
   },
   "sentences": [
     {

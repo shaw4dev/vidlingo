@@ -12,6 +12,25 @@
 
 ---
 
+## 0. Decision Log (ADRs)
+
+### ADR-001 — Content model: embed YouTube, do not host video
+**Date**: 2026-06 · **Status**: Accepted · **Supersedes**: any "host-your-own video + CDN" wording in §3, §4, §6, §11, §13 below.
+
+**Context.** The app needs to cover thousands of words, which means a large, varied video library. The author will not self-record at scale and cannot self-host third-party video without copyright infringement. Copyright risk attaches to *copying/redistribution*, not playback.
+
+**Decision.** Play videos via **YouTube's official IFrame player** (iOS: `YTPlayerView` / `youtube-ios-player-helper` wrapping the IFrame API). The app never downloads or hosts video; it overlays the learning layer (subtitles, word-tap, follow-read) on top of YouTube playback. Sentence/token data is derived from **YouTube captions/transcripts** (ASR only as a fallback). A `LessonPackage` therefore references a `youtube_id`, not a self-hosted `cdn_url`.
+
+**Consequences.**
+- ✅ Access to a massive content library; legally clean (embed only, per YouTube ToS — must use their player, keep branding, no download).
+- ✅ Captions/timestamps often already exist → cheaper pipeline.
+- ❌ **Offline is not possible** for embedded content (ToS forbids download). The PRD §10 "subway/offline" goal is **dropped for MVP** (revisit only if licensed/owned content is ever added).
+- ❌ Sentence control uses the YouTube player's `seekTo` → slightly less precise than `AVPlayer`; auto-pause at sentence end is implemented via a polled time observer.
+- ❌ Caption quality varies and some videos lack captions → pipeline must validate caption coverage before publishing a lesson.
+- 🔁 A future **hybrid** (add owned/licensed `LessonPackage`s with offline) remains possible: the schema keeps an optional `cdn_url`, and `provider` is an enum so an `"owned"` provider can be added without a breaking change.
+
+---
+
 ## 1. Goals & Constraints
 
 ### 1.1 What the architecture must optimise for
@@ -20,7 +39,7 @@
 |---|---|---|
 | **One demoable loop per version** | PRD §5, §12 | Vertical slices, not horizontal layers. Each version = a self-contained, deployable capability. |
 | **< 200ms perceived latency** on play / sentence-switch / word-tap | PRD §10 | Word-tap data and subtitle timestamps must be **precomputed and shipped with content**, not fetched per tap. Dictionary lookups cached on-device. |
-| **Offline / weak-network** (commute, subway) | PRD §10 | Content is cacheable and self-contained; user state syncs opportunistically (offline-first). |
+| **Weak-network tolerance** (commute) | PRD §10 | *User state* is offline-first (events/vocab queue and sync). *Video* is online-only — embedded YouTube can't be cached (ADR-001); true offline video is dropped for MVP. |
 | **MLE portfolio depth** | Author goal | Treat the **content pipeline + feature store + recommender + eval harness** as first-class, observable, reproducible systems — the things an MLE is hired to build. |
 | **Single engine, many difficulty pools** | PRD §2.1 | No user-segment-specific code paths. Difficulty is *data + a model score*, never a fork. |
 | **Reserve, don't build, monetisation & social** | Ch.13 | Define the seams (entitlement check, sharing event) as interfaces with no-op / stub implementations. |
@@ -29,6 +48,8 @@
 - No payment processing, no social graph, no Android (PRD: iOS first).
 - No phoneme-level pronunciation scoring in V1 (PRD §6.1.4 — lightweight only).
 - No real-time multiplayer / live anything.
+- **No offline video** — embedded YouTube is online-only (ADR-001).
+- **No video hosting / transcoding / CDN** — YouTube serves the media.
 
 ### 1.3 Guiding constraint: build-vs-buy
 Author is a solo developer optimising for *demonstrating ML engineering*, not reinventing infra. Rule of thumb: **buy/borrow the undifferentiated heavy lifting (ASR, TTS, base LLM, dictionary), build the differentiating pipelines (forced alignment, word↔video inverted index, recommender, eval).**
