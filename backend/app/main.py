@@ -7,7 +7,7 @@ routers here.
 from fastapi import FastAPI
 
 from app import __version__
-from app.routers import auth, health
+from app.routers import auth, content, health
 
 
 def create_app() -> FastAPI:
@@ -18,6 +18,7 @@ def create_app() -> FastAPI:
     )
     app.include_router(health.router)
     app.include_router(auth.router)
+    app.include_router(content.router)
     return app
 
 

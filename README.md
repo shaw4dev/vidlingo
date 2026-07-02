@@ -50,3 +50,4 @@ python -m app.db.seed       # load the sample lesson + demo user
 - **T02 ✅** `LessonPackage` schema + validator (structure + semantic checks); CI validates the sample.
 - **T03 ✅** Postgres data model + Alembic migrations (lessons/sentences/tokens/word_index/users/vocab); `load_package` ingests validated packages; CI runs migrate+seed.
 - **T04 ✅** Auth: register/login/me with JWT bearer tokens + PBKDF2 password hashing; `get_current_user` dependency for protected routes.
+- **T05 ✅** Content API: `GET /lessons` (theme/difficulty filters), `GET /lessons/{id}` (full package w/ sentences+tokens), `GET /words/{lemma}/occurrences` (reverse lookup).
