@@ -1,0 +1,36 @@
+# Local stack: VidLingo API + Postgres (tasks.md T09).
+#   docker compose up --build        -> API on http://localhost:8000/health
+#   SEED_ON_START=1 docker compose up --build   -> also loads the demo lesson/user
+# Config via .env (see .env.example).
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-vidlingo}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-vidlingo}
+      POSTGRES_DB: ${POSTGRES_DB:-vidlingo}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-vidlingo} -d ${POSTGRES_DB:-vidlingo}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    ports:
+      - "5432:5432"
+
+  api:
+    build: ./backend
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-vidlingo}:${POSTGRES_PASSWORD:-vidlingo}@db:5432/${POSTGRES_DB:-vidlingo}
+      SECRET_KEY: ${SECRET_KEY:-dev-insecure-change-me}
+      SEED_ON_START: ${SEED_ON_START:-0}
+    ports:
+      - "8000:8000"
+
+volumes:
+  pgdata:
