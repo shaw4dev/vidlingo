@@ -7,7 +7,8 @@ reading. See [`PRD_v1.md`](PRD_v1.md), [`architecture.md`](architecture.md), and
 ## Repo layout
 ```
 backend/   FastAPI modular monolith (architecture.md §5)
-ios/        SwiftUI app — placeholder until generated on macOS (architecture.md §4)
+web/        React + Vite + TS app — the client (architecture.md §4, ADR-002); scaffolded in T11
+ios/        (parked) native iOS is backlog per ADR-002 — kept as a placeholder, not built for MVP
 .github/    CI workflows
 ```
 
@@ -45,6 +46,16 @@ alembic upgrade head        # create tables
 python -m app.db.seed       # load the sample lesson + demo user
 ```
 
+## Docker (local stack)
+Run the API + Postgres together (architecture.md §12). Requires Docker Desktop.
+```bash
+cp .env.example .env             # optional: adjust creds / SECRET_KEY
+docker compose up --build        # API → http://localhost:8000/health
+SEED_ON_START=1 docker compose up --build   # also load the demo lesson + user
+```
+The API container applies Alembic migrations on start (`backend/docker-entrypoint.sh`),
+then serves uvicorn. Postgres data persists in the `pgdata` volume.
+
 ## Status
 - **T01 ✅** repo scaffold + CI — backend `/health` builds and is tested.
 - **T02 ✅** `LessonPackage` schema + validator (structure + semantic checks); CI validates the sample.
@@ -53,3 +64,4 @@ python -m app.db.seed       # load the sample lesson + demo user
 - **T05 ✅** Content API: `GET /lessons` (theme/difficulty filters), `GET /lessons/{id}` (full package w/ sentences+tokens), `GET /words/{lemma}/occurrences` (reverse lookup).
 - **T06 ✅** Vocab API (auth'd, per-user): `POST/GET/PATCH/DELETE /vocab`; responses embed the source sentence for jump-back. **Phase A backend complete.**
 - **T07 ✅** Content pipeline: `youtube_id` → captions → segment → tokenize/lemmatize → build+validate `LessonPackage` → load to DB. Pluggable providers; placeholder vs. Claude translation. CLI: `python -m app.pipeline.run <id> --title ... --theme ...`.
+- **T09 ✅** Dockerized: `backend/Dockerfile` (non-root, migrates on start) + root `docker-compose.yml` (API + Postgres 16, healthcheck-gated). `docker compose up --build` serves the API on a real Postgres. (T08 ingest deferred — needs video curation + a translation key.)

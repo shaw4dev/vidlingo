@@ -19,7 +19,7 @@
 
 **Context.** The app needs to cover thousands of words, which means a large, varied video library. The author will not self-record at scale and cannot self-host third-party video without copyright infringement. Copyright risk attaches to *copying/redistribution*, not playback.
 
-**Decision.** Play videos via **YouTube's official IFrame player** (iOS: `YTPlayerView` / `youtube-ios-player-helper` wrapping the IFrame API). The app never downloads or hosts video; it overlays the learning layer (subtitles, word-tap, follow-read) on top of YouTube playback. Sentence/token data is derived from **YouTube captions/transcripts** (ASR only as a fallback). A `LessonPackage` therefore references a `youtube_id`, not a self-hosted `cdn_url`.
+**Decision.** Play videos via **YouTube's official IFrame player** (in the web client, the IFrame Player API directly — see ADR-002). The app never downloads or hosts video; it overlays the learning layer (subtitles, word-tap, follow-read) on top of YouTube playback. Sentence/token data is derived from **YouTube captions/transcripts** (ASR only as a fallback). A `LessonPackage` therefore references a `youtube_id`, not a self-hosted `cdn_url`.
 
 **Consequences.**
 - ✅ Access to a massive content library; legally clean (embed only, per YouTube ToS — must use their player, keep branding, no download).
@@ -28,6 +28,23 @@
 - ❌ Sentence control uses the YouTube player's `seekTo` → slightly less precise than `AVPlayer`; auto-pause at sentence end is implemented via a polled time observer.
 - ❌ Caption quality varies and some videos lack captions → pipeline must validate caption coverage before publishing a lesson.
 - 🔁 A future **hybrid** (add owned/licensed `LessonPackage`s with offline) remains possible: the schema keeps an optional `cdn_url`, and `provider` is an enum so an `"owned"` provider can be added without a breaking change.
+
+---
+
+### ADR-002 — Client platform: web app (React), not native iOS
+**Date**: 2026-07 · **Status**: Accepted · **Supersedes**: the "iOS / SwiftUI" framing in §1.2, §2, §4 below and the iOS wording in the PRD.
+
+**Context.** The learner (and the author's day-to-day dev machine) are cross-platform, and the author has **no Mac** — native iOS requires macOS/Xcode to build, run a simulator, and ship. That blocks development and verification entirely. Meanwhile ADR-001 already plays video through the **YouTube IFrame player**, which is a web component: the "reader" was going to embed a web view regardless.
+
+**Decision.** Ship the client as a **responsive web app** (React + Vite + TypeScript, SPA) consuming the existing REST API. The player is the YouTube **IFrame Player API** driven by `LessonPackage` timestamps; subtitles/word-tap render from precomputed token spans; shadowing uses `getUserMedia` + `MediaRecorder`. Deploy as static assets alongside the same stack (Docker/AWS). Native iOS is **parked in the backlog**, not deleted — the backend is platform-agnostic so it remains a future option.
+
+**Consequences.**
+- ✅ Build, run, verify, and deploy entirely from Windows; no Mac needed. One codebase, faster iteration.
+- ✅ Cross-device for the actual user (phone browser / laptop) via a URL — no sideloading.
+- ✅ Zero backend change: the REST API and content pipeline are unchanged.
+- ❌ **Recording quirks on mobile Safari**: `MediaRecorder` works (iOS 14.3+) but emits mp4/aac, not webm — the ShadowingRecorder must not assume a codec.
+- ❌ Less OS integration (background audio, push, deep gestures) than native — none are MVP-critical.
+- 🔁 Native iOS (backlog) can be added later against the same API without re-architecting.
 
 ---
 
@@ -45,7 +62,7 @@
 | **Reserve, don't build, monetisation & social** | Ch.13 | Define the seams (entitlement check, sharing event) as interfaces with no-op / stub implementations. |
 
 ### 1.2 Non-goals for MVP
-- No payment processing, no social graph, no Android (PRD: iOS first).
+- No payment processing, no social graph. Client is a responsive **web app** (ADR-002); native mobile is backlog.
 - No phoneme-level pronunciation scoring in V1 (PRD §6.1.4 — lightweight only).
 - No real-time multiplayer / live anything.
 - **No offline video** — embedded YouTube is online-only (ADR-001).
@@ -63,7 +80,7 @@ Author is a solo developer optimising for *demonstrating ML engineering*, not re
                          │                 VidLingo                   │
                          │                                            │
    ┌──────────┐  HTTPS   │   ┌──────────┐      ┌─────────────────┐    │
-   │  iOS App │◀────────▶│   │ Backend  │◀────▶│  ML Platform     │    │
+   │ Web App  │◀────────▶│   │ Backend  │◀────▶│  ML Platform     │    │
    │ (learner)│  (REST/  │   │   API    │      │ (rec / dialog /  │    │
    └──────────┘   gRPC)  │   └────┬─────┘      │  scoring / eval) │    │
         ▲                 │       │            └─────────────────┘    │
@@ -93,40 +110,42 @@ Author is a solo developer optimising for *demonstrating ML engineering*, not re
 
 ---
 
-## 4. Client Architecture (iOS)
+## 4. Client Architecture (Web)
 
-**Stack**: Swift, SwiftUI, AVFoundation/`AVPlayer`, `AVAudioRecorder`, SQLite (GRDB) for local store, Combine/async-await.
+> Per **ADR-002**, the client is a responsive **web app**, not native iOS. Native iOS is parked in the backlog; the module boundaries below are framework-agnostic, so a future SwiftUI client can mirror them against the same API.
+
+**Stack**: React + Vite + TypeScript (SPA); YouTube **IFrame Player API** for playback; `getUserMedia` + `MediaRecorder` for shadowing; Web Audio for playback/TTS; a typed API client over the REST backend; `localStorage`/IndexedDB for a lightweight local cache and offline queue.
 
 ### 4.1 Module map
 ```
-App
-├── Feature/Reader        ← §6.1 the heart: player + subtitle + word-tap + follow-read
-│   ├── PlayerEngine       (AVPlayer wrapper: seek-to-sentence, single-sentence loop, rate 0.5–1.5×)
-│   ├── SubtitleRenderer   (custom tappable token layer; current-sentence highlight)
-│   ├── WordCard           (phonetic, POS, gloss, in-context meaning, TTS playback)
-│   └── ShadowingRecorder  (record → align-to-original → lightweight score → replay)
-├── Feature/Vocab         ← §6.2 vocab book (source thumbnail, sentence, mastery)
-├── Feature/Browse        ← §6.3 theme × difficulty grid
-├── Feature/Review        ← §6.5 spaced repetition (V1.5)
-├── Feature/Discover      ← §6.6/§6.7 recommend + role-play (V2/V3)
-├── Feature/Profile       ← level, stats, settings
-├── Core/ContentCache      (LessonPackage download + offline store)
-├── Core/SyncEngine        (offline event queue → backend; CRDT-lite last-write-wins per field)
-├── Core/Analytics         (structured event emitter → the data flywheel)
-└── Core/Entitlement       (RESERVED: returns .free always in MVP)
+src/
+├── features/reader        ← §6.1 the heart: player + subtitle + word-tap + follow-read
+│   ├── PlayerEngine        (IFrame API wrapper: seekTo-sentence, single-sentence loop, rate 0.5–1.5×,
+│   │                        auto-pause at sentence end via polled time)
+│   ├── SubtitleLayer       (tappable token spans; current-sentence highlight; 中英/仅英/仅中/关闭)
+│   ├── WordCard            (phonetic, POS, gloss, in-context meaning, TTS playback)
+│   └── ShadowingRecorder   (MediaRecorder → replay next to original → lightweight score; codec-agnostic)
+├── features/vocab         ← §6.2 vocab book (source thumbnail, sentence, mastery)
+├── features/browse        ← §6.3 theme × difficulty list
+├── features/auth          ← login/register; token stored client-side; authenticated fetch
+├── features/review        ← §6.5 spaced repetition (V1.5, backlog)
+├── features/discover      ← §6.6/§6.7 recommend + role-play (V2/V3, backlog)
+├── lib/apiClient           (typed REST client: auth, content, reverse-lookup, vocab)
+├── lib/syncQueue           (offline event/vocab queue → backend; last-write-wins per field)
+└── lib/analytics           (structured event emitter → the data flywheel)
 ```
 
 ### 4.2 Why these choices
-- **Sentence-level control** (PRD §6.1.2 left/right-swipe = prev/next sentence, auto-pause at sentence end, single-sentence loop) is exactly what `AVPlayer` + a sentence-timestamp table makes precise. The `PlayerEngine` is driven by the `LessonPackage` timestamps, never by guesswork.
-- **Tappable subtitles render from precomputed token spans** shipped in the package → word-tap is a local dictionary lookup (cached), satisfying < 200ms (PRD §10) and working offline.
-- **Follow-read scoring is local & lightweight in V1** (volume / duration / completion, PRD §6.1.4); the `ShadowingRecorder` exposes a `PronunciationScorer` protocol so the V3 phoneme-level SDK drops in without touching the UI.
+- **Sentence-level control** (PRD §6.1.2 prev/next sentence, auto-pause at sentence end, single-sentence loop) is driven by the **IFrame API** + the `LessonPackage` sentence-timestamp table (`seekTo` + a polled time observer), never by guesswork. This is the same mechanism ADR-001 assumed for the embedded player.
+- **Tappable subtitles render from precomputed token spans** shipped in the package → word-tap is a dictionary lookup (cached client-side), satisfying < 200ms (PRD §10).
+- **Follow-read scoring is client-side & lightweight in V1** (volume / duration / completion, PRD §6.1.4); the `ShadowingRecorder` exposes a `PronunciationScorer` seam so a future phoneme-level engine drops in without touching the UI. It must not assume a recording codec (mobile Safari emits mp4/aac, not webm).
 
-### 4.3 Offline-first data flow
+### 4.3 Local-cache / sync data flow
 ```
-User taps word ──▶ local event log (SQLite) ──▶ UI updates instantly (local dict)
+User taps word ──▶ in-memory state ──▶ UI updates instantly (cached dict)
                                   │
-                       SyncEngine (on connectivity) ──▶ POST /events (batched)
-Vocab add ─────────▶ local vocab table ──▶ optimistic UI ──▶ sync ──▶ server merge
+                        syncQueue (on connectivity) ──▶ POST /events (batched)
+Vocab add ─────────▶ optimistic UI ──▶ POST /vocab ──▶ server is source of truth
 ```
 
 ---
