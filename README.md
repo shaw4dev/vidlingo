@@ -46,6 +46,17 @@ alembic upgrade head        # create tables
 python -m app.db.seed       # load the sample lesson + demo user
 ```
 
+## Web app (client)
+React + Vite + TypeScript SPA (`web/`), consuming the backend REST API (ADR-002).
+```bash
+cd web
+npm install
+npm run dev          # → http://localhost:5173  (dev-proxies /api → :8000)
+npm run build        # type-check + production build
+```
+Run the backend (above) on `:8000` first; the Vite dev server proxies `/api/*`
+to it, so no CORS setup is needed. Override the API base with `VITE_API_BASE`.
+
 ## Docker (local stack)
 Run the API + Postgres together (architecture.md §12). Requires Docker Desktop.
 ```bash
@@ -65,3 +76,4 @@ then serves uvicorn. Postgres data persists in the `pgdata` volume.
 - **T06 ✅** Vocab API (auth'd, per-user): `POST/GET/PATCH/DELETE /vocab`; responses embed the source sentence for jump-back. **Phase A backend complete.**
 - **T07 ✅** Content pipeline: `youtube_id` → captions → segment → tokenize/lemmatize → build+validate `LessonPackage` → load to DB. Pluggable providers; placeholder vs. Claude translation. CLI: `python -m app.pipeline.run <id> --title ... --theme ...`.
 - **T09 ✅** Dockerized: `backend/Dockerfile` (non-root, migrates on start) + root `docker-compose.yml` (API + Postgres 16, healthcheck-gated). `docker compose up --build` serves the API on a real Postgres. (T08 ingest deferred — needs video curation + a translation key.)
+- **T11 ✅** Web app scaffold (`web/`, React+Vite+TS): routing, typed API client, register/login + authenticated `/auth/me`, protected routes, lesson browse. Verified end-to-end through the dev proxy against the live backend.

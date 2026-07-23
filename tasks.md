@@ -100,11 +100,12 @@ Legend — **P**: P0 = core daily loop, P1 = should, P2 = nice. **Maps to**: PRD
 
 > Client is a **React + Vite + TypeScript** SPA consuming the REST API (ADR-002, arch §4). Consolidated from the old 7-task iOS plan into 5 web tasks. Each still ships a visible slice.
 
-### T11 · Web scaffold + auth + API client
+### T11 · Web scaffold + auth + API client ✅
 - **Do**: Vite React+TS app; routing (browse / reader); a typed `apiClient` over the backend; register/login using the T04 auth endpoints (store token, authenticated fetch); dev proxy to the API; app builds & serves.
 - **Maps to**: arch §4.1 (`features/auth`, `lib/apiClient`)
 - **Depends on**: T04, T05
 - **Done when**: You can register/login in the browser and the app makes an authenticated call to the API.
+- **Done** ✅ — `web/`: `lib/api.ts` (typed client for auth/content/vocab), `AuthContext` (token in localStorage → `/auth/me`), `ProtectedRoute`, Login/Browse/Reader pages, Vite `/api` dev proxy. Verified register→authenticated `/me`→lessons through the proxy; unauth `/me`→401. `npm run build` + lint clean.
 
 ### T12 · Reader — player + sentence-by-sentence + tappable bilingual subtitles
 - **Do**: YouTube **IFrame Player API** driven by sentence timestamps: play/pause, prev/next sentence, **single-sentence repeat/loop**, auto-pause at sentence end (polled time), speeds 0.5–1.5×. Subtitle layer renders token spans as **tappable**, current-sentence highlight, mode toggle 中英 / 仅英 / 仅中 / 关闭. *(Merges old T11 + T12.)*
