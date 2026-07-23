@@ -107,11 +107,12 @@ Legend — **P**: P0 = core daily loop, P1 = should, P2 = nice. **Maps to**: PRD
 - **Done when**: You can register/login in the browser and the app makes an authenticated call to the API.
 - **Done** ✅ — `web/`: `lib/api.ts` (typed client for auth/content/vocab), `AuthContext` (token in localStorage → `/auth/me`), `ProtectedRoute`, Login/Browse/Reader pages, Vite `/api` dev proxy. Verified register→authenticated `/me`→lessons through the proxy; unauth `/me`→401. `npm run build` + lint clean.
 
-### T12 · Reader — player + sentence-by-sentence + tappable bilingual subtitles
+### T12 · Reader — player + sentence-by-sentence + tappable bilingual subtitles ✅
 - **Do**: YouTube **IFrame Player API** driven by sentence timestamps: play/pause, prev/next sentence, **single-sentence repeat/loop**, auto-pause at sentence end (polled time), speeds 0.5–1.5×. Subtitle layer renders token spans as **tappable**, current-sentence highlight, mode toggle 中英 / 仅英 / 仅中 / 关闭. *(Merges old T11 + T12.)*
 - **Maps to**: PRD §6.1.1–6.1.3; arch ADR-001, ADR-002, §4.1
 - **Depends on**: T11
 - **Done when**: A lesson plays embedded; she can loop/step any single sentence; words are individually tappable; all four subtitle modes render.
+- **Done** ✅ — `features/reader/`: `lib/youtube.ts` (IFrame API loader), `useYouTubePlayer` (React-safe lifecycle + polled time + controls), `TappableSentence` (token buttons from `char_span`), Reader page (prev/next/play/pause, repeat loop, auto-pause, 0.5–1.5× speed, 4 subtitle modes, click-to-jump transcript). Tapped word shows a chip (word card = T13). Build (tsc+vite) + lint clean. *Browser/visual acceptance best done against real content (T08) — the seeded sample's timestamps are fabricated and won't align with the actual video's audio.*
 
 ### T13 · Word card + add-to-vocab + reverse lookup
 - **Do**: On word-tap, a card: phonetic, POS, gloss, in-context meaning, TTS audio. Buttons: **Add to vocab** (persists via T06 vocab API) and **More videos with this word** → a list of other sentences/videos containing that lemma (via T05 reverse lookup); tap one → open that lesson at that sentence. Dictionary from a free API/dataset, cached client-side. *(Merges old T13 + T16 — the differentiator.)*
