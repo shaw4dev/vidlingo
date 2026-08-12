@@ -68,6 +68,15 @@ class Lesson(Base):
     clips: Mapped[list[Clip]] = relationship(
         back_populates="lesson", cascade="all, delete-orphan", order_by="Clip.start_idx"
     )
+    # Needed for ORM-level cascade, not just navigation: load_package() re-ingests
+    # a lesson by deleting and reinserting it, and session.delete() only follows
+    # relationships. The FK's ondelete="CASCADE" doesn't cover it — SQLite ignores
+    # foreign keys unless PRAGMA foreign_keys is on. Without this, re-ingest left
+    # the old rows behind, and since sentence ids are deterministic they weren't
+    # even orphans — just silent duplicates inflating every reverse lookup.
+    word_index: Mapped[list[WordIndex]] = relationship(
+        back_populates="lesson", cascade="all, delete-orphan"
+    )
 
 
 class Sentence(Base):
@@ -118,6 +127,8 @@ class WordIndex(Base):
     sentence_id: Mapped[str] = mapped_column(ForeignKey("sentences.id", ondelete="CASCADE"))
     lesson_id: Mapped[str] = mapped_column(ForeignKey("lessons.id", ondelete="CASCADE"))
     start_ms: Mapped[int] = mapped_column(Integer)
+
+    lesson: Mapped[Lesson] = relationship(back_populates="word_index")
 
 
 class Clip(Base):

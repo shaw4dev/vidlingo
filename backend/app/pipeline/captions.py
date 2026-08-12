@@ -7,6 +7,7 @@ Reader can seek to.
 
 from __future__ import annotations
 
+import re
 import time
 from dataclasses import dataclass
 from typing import Protocol
@@ -120,6 +121,30 @@ class YouTubeTranscriptFetcher:
 
 _SENTENCE_END = ".?!"
 
+# Broadcast captions carry three kinds of non-speech markup that would otherwise
+# reach the Reader as vocabulary: "[ Engine revs ]" sound tags, "♪♪" music runs,
+# and a leading "-" marking a change of speaker ("-Yeah. -Oh.").
+_SOUND_TAG = re.compile(r"\[[^\]]*\]")
+_MUSIC = re.compile(r"[♪♫♩]+")
+# A speaker dash sits at a word boundary and hugs the next token. Requiring a
+# non-dash, non-space after it — and no word char or dash before it — is what
+# keeps real hyphens: "I-I'm" and "ex-husband" (letter before), "this -- this"
+# (dash after) are all left alone.
+_SPEAKER_DASH = re.compile(r"(?<![\w-])-(?=[^\s-])")
+
+
+def clean_caption_text(text: str) -> str:
+    """Strip caption markup, leaving only spoken words. May return "".
+
+    Order matters: speaker dashes go first, while they're still glued to the
+    token that follows. Removing "[ Sobs ]" from "-[ Sobs ] But how" first would
+    leave a bare "- But how", which no longer looks like a speaker dash.
+    """
+    text = _SPEAKER_DASH.sub("", text)
+    text = _SOUND_TAG.sub(" ", text)
+    text = _MUSIC.sub(" ", text)
+    return " ".join(text.split())
+
 
 def segment_into_sentences(
     cues: list[CaptionCue],
@@ -133,7 +158,13 @@ def segment_into_sentences(
     or a large silent gap precedes the next cue. Output is guaranteed monotonic
     and non-overlapping with start_ms < end_ms (so it passes package validation).
     """
-    clean = [c for c in cues if c.text.strip()]
+    # Cues that were pure markup ("-[ Sobs softly ]", "♪♪") clean down to nothing
+    # and are dropped; their timespan just becomes part of the surrounding gap.
+    clean = [
+        CaptionCue(t, c.start_ms, c.end_ms)
+        for c in cues
+        if (t := clean_caption_text(c.text))
+    ]
     segments: list[Segment] = []
 
     parts: list[str] = []
@@ -142,7 +173,7 @@ def segment_into_sentences(
     words = 0
 
     for i, cue in enumerate(clean):
-        text = " ".join(cue.text.split())
+        text = cue.text  # already cleaned and whitespace-collapsed above
         if start is None:
             start = cue.start_ms
         parts.append(text)

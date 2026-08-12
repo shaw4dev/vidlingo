@@ -3,7 +3,13 @@ from sqlalchemy import func, select
 
 from app.content.validator import validate_package
 from app.db.models import Lesson, Sentence, WordIndex
-from app.pipeline.captions import CaptionCue, NoCaptionsError, Segment, segment_into_sentences
+from app.pipeline.captions import (
+    CaptionCue,
+    NoCaptionsError,
+    Segment,
+    clean_caption_text,
+    segment_into_sentences,
+)
 from app.pipeline.nlp import PlaceholderTranslator, lemmatize, tokenize
 from app.pipeline.pipeline import LessonMeta, build_lesson_package, ingest_youtube
 
@@ -54,6 +60,46 @@ def test_segment_enforces_monotonic_nonoverlapping():
 
 def test_segment_empty_input():
     assert segment_into_sentences([]) == []
+
+
+# ---- caption markup cleaning -----------------------------------------------
+# Inputs below are verbatim strings pulled from ingested NBC clips, not invented
+# ones — the speaker-dash vs. real-hyphen distinction is where this gets subtle.
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        # speaker dashes: leading and mid-line
+        ("-Yeah. -Oh.", "Yeah. Oh."),
+        ("-Was it all a lie? -Oh, honey.", "Was it all a lie? Oh, honey."),
+        # sound tags and music runs
+        ("[ Engine revs ] -Okay, let me out!", "Okay, let me out!"),
+        ("♪♪ ♪♪ -Thirsty?", "Thirsty?"),
+        ("-[ Sobs ] But how are you so sure?", "But how are you so sure?"),
+        # real hyphens must survive
+        ("-My ex-husband.", "My ex-husband."),
+        ("Oh, my God. [ Laughs ] I-I'm so sorry.", "Oh, my God. I-I'm so sorry."),
+        ("M-O-R-R-I-S.", "M-O-R-R-I-S."),
+        ("-W-Well, I should help you clean up.", "W-Well, I should help you clean up."),
+        # "--" is an em dash in these captions, not a speaker marker
+        ("-Honey, this -- this isn't --", "Honey, this -- this isn't --"),
+        # nothing but markup
+        ("-[ Sobs softly ]", ""),
+        ("♪♪ ♪♪", ""),
+    ],
+)
+def test_clean_caption_text(raw, expected):
+    assert clean_caption_text(raw) == expected
+
+
+def test_segment_drops_cues_that_are_pure_markup():
+    cues = [
+        CaptionCue("-Thanks, Mom.", 0, 1000),
+        CaptionCue("[ Door closes ]", 1000, 2000),  # no speech -> disappears
+        CaptionCue("-Bye.", 2000, 3000),
+    ]
+    segs = segment_into_sentences(cues)
+    assert [s.text for s in segs] == ["Thanks, Mom.", "Bye."]
 
 
 # ---- tokenize / lemmatize --------------------------------------------------

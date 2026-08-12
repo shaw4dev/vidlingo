@@ -45,6 +45,24 @@ def test_load_package_is_idempotent(db):
     assert db.scalar(select(func.count()).select_from(Sentence)) == 2
 
 
+def test_reload_replaces_word_index_instead_of_duplicating(db):
+    """Every child table must be cleared on re-ingest, not just sentences.
+
+    word_index is the one that hides a leak: sentence ids are derived from the
+    lesson id, so stale rows still point at live sentences and read as valid
+    duplicates rather than orphans — silently doubling every reverse lookup.
+    """
+    load_package(db, _sample())
+    before_index = db.scalar(select(func.count()).select_from(WordIndex))
+    before_tokens = db.scalar(select(func.count()).select_from(Token))
+    assert before_index > 0
+
+    load_package(db, _sample())
+
+    assert db.scalar(select(func.count()).select_from(WordIndex)) == before_index
+    assert db.scalar(select(func.count()).select_from(Token)) == before_tokens
+
+
 def test_load_package_rejects_invalid(db):
     bad = _sample()
     bad["sentences"][0]["end_ms"] = 999999  # exceeds duration -> semantic error
