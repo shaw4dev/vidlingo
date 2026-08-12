@@ -7,12 +7,28 @@ Reader can seek to.
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 from typing import Protocol
 
 
 class NoCaptionsError(Exception):
-    """Raised when a video has no usable caption track."""
+    """This video yields no usable captions — skip it and move on.
+
+    Covers a missing/disabled caption track, but also videos we simply can't
+    read: geo-restricted, age-gated, private, or deleted. They're all the same
+    decision for the caller (skip one video), unlike CaptionsBlockedError.
+    """
+
+
+class CaptionsBlockedError(Exception):
+    """YouTube is refusing our caption requests (IP rate-limit / bot check).
+
+    Distinct from NoCaptionsError because it says nothing about the video: it's
+    a property of *us*, and the next request will fail the same way. Callers
+    must abort the batch rather than mark videos as individually failed —
+    hammering on only deepens the block.
+    """
 
 
 @dataclass
@@ -39,23 +55,58 @@ class YouTubeTranscriptFetcher:
 
     Kept thin and imported lazily so the rest of the pipeline has no hard
     dependency on it (and tests never touch the network).
+
+    This endpoint is not part of the Data API — it's youtube.com's internal
+    timedtext service, with no key and no quota, so YouTube polices it by IP.
+
+    Measured against a residential IP: roughly 30-45 fetches per cooldown
+    window, whether spaced 0s or 4s apart. So the binding limit is requests per
+    window, not rate — `min_interval_s` softens the burst but cannot buy volume.
+    Seeding a large library means either many small runs spread over hours, or
+    routing through proxies (youtube-transcript-api supports both).
     """
 
-    def __init__(self, languages: tuple[str, ...] = ("en",)):
+    def __init__(self, languages: tuple[str, ...] = ("en",), *, min_interval_s: float = 5.0):
         self.languages = list(languages)
+        self.min_interval_s = min_interval_s
+        self._last_fetch = 0.0
+
+    def _throttle(self) -> None:
+        wait = self.min_interval_s - (time.monotonic() - self._last_fetch)
+        if wait > 0:
+            time.sleep(wait)
+        self._last_fetch = time.monotonic()
 
     def fetch(self, youtube_id: str) -> list[CaptionCue]:
         # youtube-transcript-api >= 1.0 API: instance .fetch() -> FetchedTranscript.
         from youtube_transcript_api import (  # noqa: PLC0415
+            AgeRestricted,
+            InvalidVideoId,
             NoTranscriptFound,
+            PoTokenRequired,
+            RequestBlocked,
             TranscriptsDisabled,
+            VideoUnavailable,
+            VideoUnplayable,
             YouTubeTranscriptApi,
         )
 
+        # Order matters: the blocked check must come first, because it's the one
+        # error that says "stop", and we must not mistake it for a bad video.
+        self._throttle()
         try:
             fetched = YouTubeTranscriptApi().fetch(youtube_id, languages=self.languages)
-        except (TranscriptsDisabled, NoTranscriptFound) as exc:
-            raise NoCaptionsError(f"no captions for {youtube_id}") from exc
+        except (RequestBlocked, PoTokenRequired) as exc:  # IpBlocked subclasses RequestBlocked
+            raise CaptionsBlockedError(str(exc).strip().splitlines()[0]) from exc
+        except (
+            TranscriptsDisabled,
+            NoTranscriptFound,
+            VideoUnplayable,  # geo-restricted, removed by uploader, ...
+            VideoUnavailable,
+            AgeRestricted,
+            InvalidVideoId,
+        ) as exc:
+            raise NoCaptionsError(f"{type(exc).__name__} for {youtube_id}") from exc
 
         cues: list[CaptionCue] = []
         for snip in fetched:

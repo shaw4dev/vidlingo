@@ -29,6 +29,10 @@ services:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-vidlingo}:${POSTGRES_PASSWORD:-vidlingo}@db:5432/${POSTGRES_DB:-vidlingo}
       SECRET_KEY: ${SECRET_KEY:-dev-insecure-change-me}
       SEED_ON_START: ${SEED_ON_START:-0}
+      # Optional. Without them the API still runs: on-demand word backfill
+      # no-ops silently, and auto-ingested lessons get placeholder translations.
+      YOUTUBE_API_KEY: ${YOUTUBE_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
     ports:
       - "8000:8000"
 

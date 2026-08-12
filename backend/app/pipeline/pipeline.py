@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.db.models import Lesson
 from app.db.seed import load_package
 from app.pipeline.captions import (
+    CaptionCue,
     CaptionFetcher,
     NoCaptionsError,
     Segment,
@@ -94,6 +95,24 @@ def build_lesson_package(meta: LessonMeta, segments: list[Segment], translator: 
     }
 
 
+def ingest_from_cues(
+    session: Session,
+    meta: LessonMeta,
+    cues: list[CaptionCue],
+    translator: Translator,
+) -> Lesson:
+    """Ingest already-fetched caption cues: segment -> translate -> ... -> load.
+
+    Split out from `ingest_youtube` so callers that must inspect captions before
+    ingesting (e.g. word backfill verifying a lemma is present) don't fetch twice.
+    """
+    segments = segment_into_sentences(cues)
+    package = build_lesson_package(meta, segments, translator)
+    lesson = load_package(session, package)  # validates before insert (T02/T03)
+    session.commit()
+    return lesson
+
+
 def ingest_youtube(
     session: Session,
     meta: LessonMeta,
@@ -106,8 +125,4 @@ def ingest_youtube(
     assembled package fails validation (both surfaced by the CLI).
     """
     cues = fetcher.fetch(meta.youtube_id)
-    segments = segment_into_sentences(cues)
-    package = build_lesson_package(meta, segments, translator)
-    lesson = load_package(session, package)  # validates before insert (T02/T03)
-    session.commit()
-    return lesson
+    return ingest_from_cues(session, meta, cues, translator)

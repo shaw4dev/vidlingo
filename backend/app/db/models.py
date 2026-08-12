@@ -65,6 +65,9 @@ class Lesson(Base):
     sentences: Mapped[list[Sentence]] = relationship(
         back_populates="lesson", cascade="all, delete-orphan", order_by="Sentence.idx"
     )
+    clips: Mapped[list[Clip]] = relationship(
+        back_populates="lesson", cascade="all, delete-orphan", order_by="Clip.start_idx"
+    )
 
 
 class Sentence(Base):
@@ -115,6 +118,66 @@ class WordIndex(Base):
     sentence_id: Mapped[str] = mapped_column(ForeignKey("sentences.id", ondelete="CASCADE"))
     lesson_id: Mapped[str] = mapped_column(ForeignKey("lessons.id", ondelete="CASCADE"))
     start_ms: Mapped[int] = mapped_column(Integer)
+
+
+class Clip(Base):
+    """A 30-90s window of a lesson (a contiguous sentence range) — the unit the
+    front-page feed serves. Generated from a lesson's sentences at ingest time
+    (see app.pipeline.clips); one Lesson yields many Clips."""
+
+    __tablename__ = "clips"
+    __table_args__ = (UniqueConstraint("lesson_id", "start_idx", "end_idx"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    lesson_id: Mapped[str] = mapped_column(
+        ForeignKey("lessons.id", ondelete="CASCADE"), index=True
+    )
+    start_idx: Mapped[int] = mapped_column(Integer)  # first sentence idx (inclusive)
+    end_idx: Mapped[int] = mapped_column(Integer)  # last sentence idx (inclusive)
+    start_ms: Mapped[int] = mapped_column(Integer)
+    end_ms: Mapped[int] = mapped_column(Integer)
+    duration_ms: Mapped[int] = mapped_column(Integer)
+    difficulty: Mapped[str] = mapped_column(String(8), index=True)
+    text_en: Mapped[str] = mapped_column(Text)  # concatenated preview of the window
+
+    lesson: Mapped[Lesson] = relationship(back_populates="clips")
+
+
+class WordSearch(Base):
+    """Quota cache for on-demand word backfill: records that we already searched
+    the API for a lemma, so a repeated miss doesn't re-spend 100 quota units.
+    See app.pipeline.sourcing.backfill_word."""
+
+    __tablename__ = "word_searches"
+
+    lemma: Mapped[str] = mapped_column(String(64), primary_key=True)
+    searched_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    ingested_count: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class DictionaryEntry(Base):
+    """Cache of looked-up word definitions (T13 word card).
+
+    The dictionary itself is an external provider (see app.content.dictionary);
+    this table means we hit it once per lemma, ever. `senses` holds the
+    provider's sense list as JSON text so the shape can evolve without a
+    migration. A row is only written for a successful lookup — misses aren't
+    cached, so a word gains an entry as soon as the provider learns it.
+    """
+
+    __tablename__ = "dictionary_entries"
+
+    lemma: Mapped[str] = mapped_column(String(64), primary_key=True)
+    phonetic: Mapped[str | None] = mapped_column(String(64))
+    audio_url: Mapped[str | None] = mapped_column(String(512))
+    gloss_zh: Mapped[str | None] = mapped_column(Text)
+    senses: Mapped[str] = mapped_column(Text, default="[]")  # JSON list
+    provider: Mapped[str] = mapped_column(String(64))
+    fetched_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
 
 
 class VocabItem(Base):

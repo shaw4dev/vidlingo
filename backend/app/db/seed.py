@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.content.validator import validate_package
 from app.db.models import Lesson, Sentence, Token, User, WordIndex
+from app.pipeline.clips import SentenceSpan, generate_clips
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
 SAMPLE_PACKAGE = BACKEND_DIR / "samples" / "lesson_package.sample.json"
@@ -96,6 +97,20 @@ def load_package(session: Session, package: dict) -> Lesson:
                 start_ms=row["start_ms"],
             )
         )
+
+    session.flush()
+
+    spans = [
+        SentenceSpan(
+            idx=s["idx"],
+            start_ms=s["start_ms"],
+            end_ms=s["end_ms"],
+            text_en=s["text_en"],
+            difficulty=s["difficulty"],
+        )
+        for s in package["sentences"]
+    ]
+    generate_clips(session, lesson, spans)
 
     session.flush()
     return lesson
