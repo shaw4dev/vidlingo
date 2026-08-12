@@ -111,6 +111,39 @@ export interface OccurrencesResponse {
   occurrences: Occurrence[]
 }
 
+export interface DictSense {
+  pos: string | null
+  definition: string
+  example: string | null
+}
+
+export interface WordDefinition {
+  lemma: string
+  phonetic: string | null
+  audio_url: string | null
+  gloss_zh: string | null
+  senses: DictSense[]
+  provider: string
+}
+
+export interface FeedClip {
+  clip_id: string
+  lesson_id: string
+  youtube_id: string | null
+  title: string
+  theme: string
+  difficulty: string
+  start_ms: number
+  end_ms: number
+  duration_ms: number
+  text_en: string
+}
+
+export interface FeedResponse {
+  clips: FeedClip[]
+  next_offset: number | null
+}
+
 export type Mastery = 'new' | 'learning' | 'mastered'
 
 export interface SourceRef {
@@ -161,6 +194,17 @@ export const api = {
   getLesson: (lessonId: string) => request<LessonDetail>(`/lessons/${lessonId}`),
   wordOccurrences: (lemma: string) =>
     request<OccurrencesResponse>(`/words/${encodeURIComponent(lemma)}/occurrences`),
+  wordDefinition: (word: string) =>
+    request<WordDefinition>(`/words/${encodeURIComponent(word)}/definition`),
+  getFeed: (params: { theme?: string; difficulty?: string; limit?: number; offset?: number } = {}) => {
+    const q = new URLSearchParams()
+    if (params.theme) q.set('theme', params.theme)
+    if (params.difficulty) q.set('difficulty', params.difficulty)
+    if (params.limit != null) q.set('limit', String(params.limit))
+    if (params.offset != null) q.set('offset', String(params.offset))
+    const qs = q.toString()
+    return request<FeedResponse>(`/feed${qs ? `?${qs}` : ''}`)
+  },
 
   // vocab (T06, per-user)
   listVocab: () => request<VocabItem[]>('/vocab'),

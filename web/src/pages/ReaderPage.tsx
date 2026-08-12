@@ -1,12 +1,13 @@
 // The Reader (T12): YouTube IFrame player driven by sentence timestamps, with
 // sentence-by-sentence stepping, single-sentence loop, speed control, and
-// tappable bilingual subtitles (four display modes). The word card + reverse
-// lookup land in T13 — for now a tapped word shows a small chip.
+// tappable bilingual subtitles (four display modes). Tapping a word opens the
+// word card (T13): meaning, pronunciation, add-to-vocab, and reverse lookup.
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { api, ApiError, type LessonDetail, type Sentence, type TokenSpan } from '../lib/api'
 import { useYouTubePlayer } from '../features/reader/useYouTubePlayer'
 import { TappableSentence } from '../features/reader/TappableSentence'
+import { WordCard } from '../features/word/WordCard'
 
 type SubtitleMode = 'bi' | 'en' | 'zh' | 'off'
 
@@ -115,6 +116,7 @@ function Reader({ lesson }: { lesson: LessonDetail }) {
     (idx: number) => {
       const clamped = Math.max(0, Math.min(sentences.length - 1, idx))
       setActiveIdx(clamped)
+      setSelected(null) // the card belongs to the sentence we're leaving
       pausedAtEnd.current = false
       controls.seekMs(sentences[clamped].start_ms)
       controls.play()
@@ -174,17 +176,14 @@ function Reader({ lesson }: { lesson: LessonDetail }) {
           </>
         )}
         {selected && (
-          <div className="chip">
-            <strong>{selected.surface}</strong>
-            <span className="muted small">
-              {' '}
-              · {selected.lemma}
-              {selected.pos ? ` · ${selected.pos}` : ''} — word card in T13
-            </span>
-            <button className="link" onClick={() => setSelected(null)}>
-              ✕
-            </button>
-          </div>
+          <WordCard
+            key={`${active.id}:${selected.char_span[0]}`}
+            surface={selected.surface}
+            lemma={selected.lemma}
+            sentenceId={active.id}
+            contextZh={active.text_zh}
+            onClose={() => setSelected(null)}
+          />
         )}
       </div>
 
