@@ -2,9 +2,9 @@
 
 | Field | Value |
 |---|---|
-| Doc version | v2.0 (re-scoped to a daily-use MVP with a real backend) |
+| Doc version | v2.1 (adds Phase E — clip feed + auto-sourcing) |
 | Companion to | `PRD_v1.md`, `architecture.md` (esp. ADR-001: YouTube-embed) |
-| MVP tasks | 15 (T01–T15); T01–T07 + T09 done (T08 deferred) |
+| MVP tasks | 18 (T01–T18); T01–T07, T09, T11–T13, T16–T18 done (T08 deferred) |
 | Backlog | parked below (B1–B12) — pull from it only after the MVP is in daily use |
 | Client | **Web app** (React + Vite + TS) per **ADR-002** — no Mac needed; native iOS parked in backlog |
 
@@ -32,7 +32,14 @@ Legend — **P**: P0 = core daily loop, P1 = should, P2 = nice. **Maps to**: PRD
 - **T07 ✅** Content pipeline: `youtube_id` → captions → segment → tokenize/lemmatize → build+validate → load to DB.
 - **T09 ✅** Dockerized: `backend/Dockerfile` + root `docker-compose.yml` (API + Postgres 16, healthcheck-gated, migrate-on-start). *Statically validated; runtime `docker compose up` pending Docker install on the dev machine.*
 
-> **T08 (ingest 10–15 real lessons) — deferred**, not blocking: needs video curation + a translation key. Do it before/with Phase D so reverse lookup has content.
+- **T11 ✅** Web scaffold + auth + typed API client (details in Phase D below).
+- **T12 ✅** Reader: IFrame player, sentence stepping, tappable bilingual subtitles (details in Phase D below).
+- **T13 ✅** Word card: dictionary + zh gloss + TTS, add-to-vocab, reverse lookup (details in Phase D below).
+- **T16 ✅** Feed clips: `clips` table + windowing strategy + `GET /feed` (details in Phase E below).
+- **T17 ✅** Content discovery + auto-sourcing: seed-from-sources, on-demand word backfill (Phase E).
+- **T18 ✅** Feed page + word-detail page in the web app (Phase E).
+
+> **T08 (ingest 10–15 real lessons) — deferred**, not blocking: needs video curation + a translation key. **Largely superseded by T17**, which builds the library by discovery instead of hand-collected IDs — T08 is now just "point T17 at good sources and proof-read the result".
 
 ---
 
@@ -114,11 +121,13 @@ Legend — **P**: P0 = core daily loop, P1 = should, P2 = nice. **Maps to**: PRD
 - **Done when**: A lesson plays embedded; she can loop/step any single sentence; words are individually tappable; all four subtitle modes render.
 - **Done** ✅ — `features/reader/`: `lib/youtube.ts` (IFrame API loader), `useYouTubePlayer` (React-safe lifecycle + polled time + controls), `TappableSentence` (token buttons from `char_span`), Reader page (prev/next/play/pause, repeat loop, auto-pause, 0.5–1.5× speed, 4 subtitle modes, click-to-jump transcript). Tapped word shows a chip (word card = T13). Build (tsc+vite) + lint clean. *Browser/visual acceptance best done against real content (T08) — the seeded sample's timestamps are fabricated and won't align with the actual video's audio.*
 
-### T13 · Word card + add-to-vocab + reverse lookup
+### T13 · Word card + add-to-vocab + reverse lookup ✅
 - **Do**: On word-tap, a card: phonetic, POS, gloss, in-context meaning, TTS audio. Buttons: **Add to vocab** (persists via T06 vocab API) and **More videos with this word** → a list of other sentences/videos containing that lemma (via T05 reverse lookup); tap one → open that lesson at that sentence. Dictionary from a free API/dataset, cached client-side. *(Merges old T13 + T16 — the differentiator.)*
 - **Maps to**: PRD §6.1.3, §6.4 (差异化亮点); arch §4.2
 - **Depends on**: T12, T06
 - **Done when**: Tapping a word shows meaning fast; "Add to vocab" persists; for an unknown word she sees other real videos using it and can jump straight in.
+- **Done** ✅ — `content/dictionary.py`: `DictionaryProvider`/`GlossProvider` protocols with `FreeDictionaryProvider` (dictionaryapi.dev — free, keyless, stdlib urllib: phonetic + audio + EN senses) and an optional `ClaudeGlossProvider` for the **Chinese gloss** (no free source has both). Composed by `lookup_definition`, which caches into a new `dictionary_entries` table (migration `d5c4b81f60a7`) — one network call per lemma, ever — and tries the lemma then the raw surface form, so words our rule-based lemmatizer mangles ("series"→"sery") still resolve. Misses aren't cached; a failed gloss never loses the entry. `GET /words/{lemma}/definition` (providers injected → tests run offline with fakes): 404 = unknown word, 502 = dictionary unreachable — deliberately different. Web: `lib/tts.ts` (dictionary recording, falling back to `speechSynthesis`), `features/word/useDefinition.ts` (memory + localStorage cache; a 404 is cached so we never re-ask), `features/word/WordCard.tsx` — phonetic, 🔊, POS + senses, zh gloss, **in-context meaning** (the source sentence's own translation, already in the package), *Add to vocab* (409 → "In your vocab", since already-saved is a success to her) and *More videos with this word →*. Wired into the Reader (replacing T12's placeholder chip; cleared on sentence change) and the top of the word-detail page. 97 backend tests pass; `npm run build` + lint clean; migration up/down clean.
+- **Note**: without `ANTHROPIC_API_KEY` the card shows English senses only — still usable, but the zh gloss is the point for her, so set the key.
 
 ### T14 · Shadowing — record & hear yourself
 - **Do**: On the current sentence: 🎤 record via `getUserMedia`/`MediaRecorder` → replay **her own recording** next to the original; lightweight feedback (duration/volume/completion). `PronunciationScorer` seam for a future engine. Codec-agnostic (mobile Safari = mp4/aac).
@@ -134,11 +143,52 @@ Legend — **P**: P0 = core daily loop, P1 = should, P2 = nice. **Maps to**: PRD
 
 ---
 
+## Phase E — Clip feed & auto-sourced library (T16–T18)
+
+> **Why this phase exists.** Two problems surfaced once the Reader worked. (1) The
+> daily-use hook was weak: "pick a lesson from a list" is a decision, and a
+> decision is friction. A **scrollable feed of 30–90s clips** is zero-decision —
+> open the app and something is already playing. (2) Reverse lookup (T05, T13) is
+> only impressive with a *large* library, and hand-collecting video IDs (T08)
+> doesn't scale to that. So the library is built by **discovery**, and any word
+> that's thinly covered **backfills itself** on first tap.
+>
+> This keeps the M1 loop intact — feed → tap word → see it in other real videos →
+> save it — and replaces "browse a list" as the entry point (Browse survives at
+> `/browse`).
+
+### T16 · Feed clips: windowing + `GET /feed` ✅
+- **Do**: A `Clip` = a contiguous sentence range of a lesson, 30–90s — the unit the feed serves. Pure, swappable windowing strategy; clips generated at ingest; a paged, deterministically-ordered feed endpoint.
+- **Maps to**: PRD §6.3 (entry point), arch §5.1–5.2
+- **Depends on**: T03, T07
+- **Done when**: Ingesting a lesson yields clips automatically, and `GET /feed` returns playable windows with stable offset paging.
+- **Done** ✅ — `db/models.py`: `Clip` (lesson_id, start/end_idx, start/end_ms, duration, difficulty, preview text; unique per lesson+range, cascade from Lesson) + migration `b2e7a9c14d3f`. `pipeline/clips.py`: `plan_clips` (v0 greedy non-overlapping windows, drops sub-30s remainders unless that would drop everything; documented as swappable) + `generate_clips` (idempotent — replaces a lesson's clips). Wired into `load_package`, so seed *and* pipeline ingests produce clips. `GET /feed?theme&difficulty&limit&offset` orders by clip position then lesson recency, so a short library interleaves lessons instead of returning one lesson back-to-back; `next_offset` for paging. `pipeline/backfill_clips.py` CLI plans clips for pre-existing lessons (`--all` re-plans after a strategy change).
+
+### T17 · Content discovery + auto-sourcing (batch + on-demand backfill) ✅
+- **Do**: Build the library by pointing at sources rather than collecting IDs; and make a thinly-covered tapped word fetch its own examples.
+- **Maps to**: PRD §8 (content ops), §6.4 (reverse lookup needs scale); arch §6
+- **Depends on**: T07
+- **Done when**: One command seeds many lessons from playlists/channels/searches, and tapping an under-covered word causes it to have more fragments next time — with API quota protected.
+- **Done** ✅ — `pipeline/discovery.py`: stdlib-only YouTube Data API v3 client + `PlaylistSource` / `ChannelSource` / `SearchSource` behind a `VideoSource` protocol (injected → fully testable offline). `pipeline/sourcing.py`: `seed_corpus` (batch; skips already-ingested / caption-less, one bad video can't halt the batch) and `backfill_word` (searches, then **only ingests videos whose captions actually contain the lemma** — search matches titles, which lie). Quota guards: skip if already ≥ `min_coverage` occurrences, and a `word_searches` table (migration `c3f1a8b62e9d`) so a fruitless search isn't re-spent (100 units/search). `pipeline/pipeline.py` split out `ingest_from_cues` so backfill doesn't fetch captions twice. `content/backfill.py` wires it to the request path as a FastAPI dependency: `GET /words/{lemma}/occurrences` schedules a **background** backfill when coverage < 3 and returns immediately; the trigger is injectable (tests use a spy, never the network) and no-ops without `YOUTUBE_API_KEY`. That endpoint now also **lemmatizes its input**, so tapping "running" resolves to "run". CLI: `python -m app.pipeline.run_discovery seed|backfill`.
+- **Cost note**: search costs 100 quota units of a 10k/day default — hence the coverage check + search cache. Batch seeding via playlists/channels (1 unit/50 ids) is the cheap path; search is the expensive one.
+
+### T18 · Web: feed page + word-detail page ✅
+- **Do**: A vertical clip feed as the app's front page, and a word page reachable from any tapped word.
+- **Maps to**: PRD §6.1.3, §6.3, §6.4; arch §4.1
+- **Depends on**: T16, T17, T12
+- **Done when**: Opening the app plays a looping clip you can scroll through, and tapping any caption word shows that word's other real-video fragments.
+- **Done** ✅ — `pages/FeedPage.tsx`: vertical snap-scroll feed; `IntersectionObserver` picks the active item, which alone mounts a player (reusing T12's `useYouTubePlayer`) looping its `[start_ms, end_ms)` window while the rest show YouTube thumbnails; prefetches the next page 3 items from the end; captions render every word as a tappable link. `pages/WordDetailPage.tsx`: fragment-by-fragment browsing of a lemma's occurrences with "Watch in context →" into the Reader, and an honest empty state (the backfill is already running). Routes: `/` → Feed, `/browse` → the old lesson list, `/word/:word` → word detail. Build (tsc+vite) + lint clean.
+- **Not yet done here**: the word card's dictionary/phonetic/POS/TTS and "Add to vocab" — that landed in **T13**, which now renders the card at the top of this page. T18 delivered the *reverse-lookup* half.
+
+---
+
 ## Milestone
 
 | Milestone | Tasks | Outcome |
 |---|---|---|
-| **M1 — Daily-use MVP** | T01–T15 | Full loop she can use every day in a browser: watch → repeat → shadow → tap → save → find more videos with that word. Backend live on AWS via Docker. |
+| **M1 — Daily-use MVP** | T01–T18 | Full loop she can use every day in a browser: **open the feed** → watch → repeat → shadow → tap → save → find more videos with that word (library auto-sourced). Backend live on AWS via Docker. |
+
+**Remaining for M1**: T14 (shadowing), T15 (vocab list), T10 (AWS deploy). T08 folded into T17.
 
 ---
 
