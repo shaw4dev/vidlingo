@@ -1,8 +1,32 @@
 # VidLingo
 
-Video English-learning app — learn by watching real video + sentence-level close
-reading. See [`PRD_v1.md`](PRD_v1.md), [`architecture.md`](architecture.md), and
-[`tasks.md`](tasks.md).
+Learn English from real video. Watch a clip, step through it sentence by
+sentence, tap any word for a definition — then see that same word used in other
+real videos, at the timestamp it was spoken.
+
+**FastAPI · PostgreSQL · React + TypeScript · Docker**
+
+Three things shaped the engineering more than the feature list did:
+
+- **The library builds itself.** You point the sourcing job at YouTube
+  playlists or channels rather than collecting video IDs by hand. It discovers
+  videos, fetches captions, segments them into sentences, tokenizes and
+  lemmatizes, then compiles an immutable `LessonPackage` that is
+  schema-validated before it may touch the database.
+- **Reverse lookup is the product.** Every lemma is indexed back to the exact
+  sentence and timestamp it came from, so a word card shows real usage instead
+  of a dictionary example. A word with too few occurrences triggers a
+  background job that goes and finds more.
+- **Real-world data and third-party limits are the hard part.** Broadcast
+  captions aren't clean text; YouTube's search endpoint costs 100 of 10,000
+  daily quota units and its caption endpoint is IP-policed. Both are handled
+  explicitly rather than hoped away — see
+  [Design notes](#design-notes-the-non-obvious-parts) below.
+
+**Status:** backend and web client are functional end to end against a live
+library; deployment (T10) is in progress, so there is no hosted demo yet — run
+it locally with the quick start below. Design docs: [`PRD_v1.md`](PRD_v1.md),
+[`architecture.md`](architecture.md), [`tasks.md`](tasks.md).
 
 ## Repo layout
 ```
@@ -89,6 +113,40 @@ SEED_ON_START=1 docker compose up --build   # also load the demo lesson + user
 ```
 The API container applies Alembic migrations on start (`backend/docker-entrypoint.sh`),
 then serves uvicorn. Postgres data persists in the `pgdata` volume.
+
+## Design notes: the non-obvious parts
+
+**Captions are not clean text.** Auditing the first 21 ingested lessons found
+that 69.5% of sentences carried a speaker dash (`-Yeah. -Oh.`), 9.1% a sound tag
+(`[ Engine revs ]`) and 3.8% music marks. Every token is indexed, so `[APPLAUSE]`
+had become a vocabulary word. The cleaner strips all three; the delicate case is
+the dash, which must vanish as a speaker marker while surviving as a real hyphen
+— it is only removed at a word boundary hugging the next token, leaving `I-I'm`,
+`ex-husband`, `M-O-R-R-I-S` and the em dash `this -- this` intact.
+
+**Two failure modes that look alike but aren't.** A video with no usable
+captions means *skip this one*. A rate-limit block means *stop the batch* — it
+says nothing about the video, and the next request will fail identically, so
+retrying only deepens the block. They are separate exception types with separate
+exit codes. The block path also deliberately writes no cache row: recording a
+search that never actually ran would skip that word forever.
+
+**Quota is a first-class constraint.** `search` costs 100 of 10,000 daily units
+while `playlistItems` costs 1, so sourcing prefers playlists, skips words the
+library already covers, and remembers fruitless searches in `word_searches`.
+Dictionary lookups compose a free keyless provider with an optional LLM gloss
+(no free source has both) and cache into `dictionary_entries` — one network call
+per lemma, ever.
+
+**A bug the dev database was hiding.** `load_package` re-ingests a lesson by
+deleting and reinserting it, but `word_index` had only a database-level
+`ondelete="CASCADE"` and no ORM relationship — and `session.delete()` follows
+relationships, while SQLite ignores foreign keys entirely unless
+`PRAGMA foreign_keys` is on. Stale rows survived re-ingest, and because sentence
+IDs are derived from the lesson ID they still pointed at live sentences: not
+orphans, just silent duplicates inflating every reverse lookup. Postgres would
+have cascaded correctly, which is exactly why it hid in development. Fixed at
+both levels and pinned with a regression test.
 
 ## Status
 - **T01 ✅** repo scaffold + CI — backend `/health` builds and is tested.
