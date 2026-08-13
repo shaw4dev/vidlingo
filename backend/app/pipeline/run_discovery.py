@@ -30,7 +30,6 @@ from app.pipeline.discovery import (
 from app.pipeline.nlp import ClaudeTranslator, PlaceholderTranslator
 from app.pipeline.sourcing import backfill_word, seed_corpus
 
-
 # ASCII only: this goes to a console that may not be UTF-8 (cp936 on zh-CN
 # Windows turns a stray em dash into mojibake).
 _BLOCKED_HINT = (
