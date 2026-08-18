@@ -5,6 +5,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { api, ApiError, type OccurrencesResponse } from '../lib/api'
+import { AppHeader } from '../components/AppHeader'
 import { WordCard } from '../features/word/WordCard'
 
 export function WordDetailPage() {
@@ -27,13 +28,16 @@ export function WordDetailPage() {
 
   return (
     <div className="page word-page">
-      <header className="topbar">
-        <button className="link" onClick={() => history.back()}>
-          ← Back
+      <AppHeader />
+      <div className="reader-bar">
+        <button className="neighbour" onClick={() => history.back()}>
+          ◀ Back
         </button>
-        <span className="spacer" />
-        <strong>{data?.lemma ?? word}</strong>
-      </header>
+        <div className="reader-title">
+          <div className="lesson-title">{data?.lemma ?? word}</div>
+        </div>
+        <span className="neighbour disabled" />
+      </div>
 
       {word && (
         <WordCard
@@ -86,7 +90,8 @@ function Fragment({ occ }: { occ: OccurrencesResponse['occurrences'][number] }) 
       <p className="fragment-zh muted">{occ.text_zh}</p>
       <div className="fragment-foot">
         <span className="muted small">{occ.lesson_title}</span>
-        <Link to={`/reader/${occ.lesson_id}`} className="link">
+        {/* `?s=` drops her at the sentence, not at the top of a 2-minute clip. */}
+        <Link to={`/reader/${occ.lesson_id}?s=${occ.idx}`} className="link">
           Watch in context →
         </Link>
       </div>

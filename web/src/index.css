@@ -55,6 +55,11 @@ h2 {
   padding: 0 1rem 3rem;
 }
 
+/* Library and reader are grid layouts and want the room. */
+.page.wide {
+  max-width: 1240px;
+}
+
 .topbar {
   display: flex;
   align-items: center;
@@ -66,6 +71,155 @@ h2 {
 
 .spacer {
   flex: 1;
+}
+
+.brand {
+  font-weight: 700;
+  color: var(--text-h);
+  text-decoration: none;
+  font-size: 1.05rem;
+}
+
+.nav {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.nav-tab {
+  color: var(--text-muted);
+  text-decoration: none;
+  font-size: 0.92rem;
+  padding: 0.3rem 0.6rem;
+  border-radius: 999px;
+}
+
+.nav-tab:hover {
+  background: #f1efff;
+  color: var(--accent);
+}
+
+.nav-tab.active {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+@media (max-width: 560px) {
+  .hide-sm {
+    display: none;
+  }
+}
+
+/* Filter chips (library, vocab) */
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 1rem;
+}
+
+.filter-chip {
+  background: var(--card);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.35rem 0.8rem;
+  font-size: 0.88rem;
+  text-transform: capitalize;
+}
+
+.filter-chip.on {
+  background: var(--accent);
+  color: var(--accent-text);
+  border-color: var(--accent);
+}
+
+.filter-sep {
+  width: 1px;
+  align-self: stretch;
+  background: var(--border);
+  margin: 0 0.35rem;
+}
+
+/* Library grid ------------------------------------------------------------ */
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 1.25rem 1rem;
+}
+
+.lesson-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  text-decoration: none;
+  color: inherit;
+}
+
+.thumb {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  border-radius: 12px;
+  background: #000 center / cover no-repeat;
+  overflow: hidden;
+}
+
+.lesson-card:hover .thumb {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.thumb-duration {
+  position: absolute;
+  right: 0.4rem;
+  bottom: 0.4rem;
+  background: rgb(0 0 0 / 78%);
+  color: #fff;
+  font-size: 0.78rem;
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+}
+
+.lesson-card-title {
+  font-weight: 600;
+  color: var(--text-h);
+  line-height: 1.35;
+  /* Two lines, then ellipsis: titles are long and the grid must stay even. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.lesson-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  text-transform: capitalize;
+}
+
+.level {
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid transparent;
+}
+
+.level-easy {
+  background: #e7f6ec;
+  color: #1c7c43;
+}
+
+.level-medium {
+  background: #fff3da;
+  color: #9a6412;
+}
+
+.level-hard {
+  background: #fdeaea;
+  color: #b3261e;
 }
 
 /* Cards & forms ----------------------------------------------------------- */
@@ -153,6 +307,79 @@ button.link {
 }
 
 /* Reader ------------------------------------------------------------------ */
+
+.reader-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.reader-title {
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+}
+
+.reader-title .lesson-title {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.neighbour {
+  flex: 0 0 auto;
+  color: var(--accent);
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.88rem;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.neighbour:hover {
+  background: #f1efff;
+}
+
+.neighbour.disabled {
+  color: var(--text-muted);
+  opacity: 0.45;
+  border-color: transparent;
+  cursor: default;
+}
+
+/* Wide screens: video sticky on the left, transcript scrolling on the right.
+   The transcript is what you scroll; the video is what you watch — so only
+   one of them may move. */
+.reader-grid {
+  display: grid;
+  gap: 1.5rem;
+}
+
+@media (min-width: 900px) {
+  .reader-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(300px, 400px);
+    align-items: start;
+  }
+
+  .reader-main {
+    position: sticky;
+    top: 1rem;
+  }
+
+  .reader-side {
+    /* Its own scroll container, so the page itself never scrolls the video
+       out of view. */
+    max-height: calc(100vh - 2rem);
+    overflow-y: auto;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 0 0.75rem;
+    background: var(--card);
+  }
+}
 
 .player-wrap {
   aspect-ratio: 16 / 9;
@@ -243,8 +470,12 @@ button.link {
 .transcript {
   list-style: none;
   padding: 0;
-  margin: 1rem 0 0;
-  border-top: 1px solid var(--border);
+  margin: 0.5rem 0 0;
+}
+
+.transcript .subtitle-en,
+.transcript .sentence-en {
+  margin: 0;
 }
 
 .sentence-row {
@@ -266,6 +497,11 @@ button.link {
 }
 
 .sentence-en {
+  font-size: 1rem;
+  line-height: 1.55;
+}
+
+.sentence-en {
   color: var(--text-h);
 }
 
@@ -281,10 +517,13 @@ button.link {
 
 .feed-item {
   scroll-snap-align: start;
-  min-height: calc(100vh - 4.5rem);
+  /* Exactly one viewport — not `min-height`. A taller item makes the gesture
+     that should scroll its caption jump to the next clip instead. */
+  height: calc(100vh - 4.5rem);
   display: flex;
   flex-direction: column;
   justify-content: center;
+  gap: 0.9rem;
   padding: 0 1rem 1rem;
 }
 
@@ -304,7 +543,8 @@ button.link {
 }
 
 .feed-caption {
-  margin-top: 0.9rem;
+  min-height: 0; /* let it shrink inside the flex column so overflow can scroll */
+  overflow-y: auto;
 }
 
 .feed-meta {
@@ -459,4 +699,84 @@ button.link {
 .word-card-actions .link {
   color: var(--accent);
   text-decoration: none;
+}
+
+/* Vocab -------------------------------------------------------------------- */
+
+.vocab-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.vocab-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.vocab-head {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.vocab-word {
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: var(--text-h);
+  text-decoration: none;
+}
+
+.vocab-word:hover {
+  color: var(--accent);
+}
+
+.mastery {
+  background: var(--card);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 0.78rem;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+}
+
+.mastery-new {
+  background: #f1efff;
+  color: var(--accent);
+  border-color: #ddd8ff;
+}
+
+.mastery-learning {
+  background: #fff3da;
+  color: #9a6412;
+  border-color: #f3e2bd;
+}
+
+.mastery-mastered {
+  background: #e7f6ec;
+  color: #1c7c43;
+  border-color: #cfe9d8;
+}
+
+.vocab-source {
+  border-top: 1px solid var(--border);
+  padding-top: 0.5rem;
+}
+
+.vocab-source-en,
+.vocab-source-zh {
+  margin: 0 0 0.2rem;
+}
+
+.vocab-source-en {
+  color: var(--text-h);
+}
+
+.vocab-source .link {
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 0.88rem;
 }

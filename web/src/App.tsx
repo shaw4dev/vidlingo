@@ -1,10 +1,16 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { LoginPage } from './pages/LoginPage'
+import { LibraryPage } from './pages/LibraryPage'
 import { FeedPage } from './pages/FeedPage'
-import { BrowsePage } from './pages/BrowsePage'
 import { ReaderPage } from './pages/ReaderPage'
+import { VocabPage } from './pages/VocabPage'
 import { WordDetailPage } from './pages/WordDetailPage'
 import { ProtectedRoute } from './components/ProtectedRoute'
+
+/** Everything behind the login wall renders inside ProtectedRoute. */
+function Private({ children }: { children: React.ReactNode }) {
+  return <ProtectedRoute>{children}</ProtectedRoute>
+}
 
 export default function App() {
   return (
@@ -13,35 +19,45 @@ export default function App() {
       <Route
         path="/"
         element={
-          <ProtectedRoute>
-            <FeedPage />
-          </ProtectedRoute>
+          <Private>
+            <LibraryPage />
+          </Private>
         }
       />
       <Route
-        path="/browse"
+        path="/shorts"
         element={
-          <ProtectedRoute>
-            <BrowsePage />
-          </ProtectedRoute>
+          <Private>
+            <FeedPage />
+          </Private>
+        }
+      />
+      <Route
+        path="/vocab"
+        element={
+          <Private>
+            <VocabPage />
+          </Private>
         }
       />
       <Route
         path="/reader/:lessonId"
         element={
-          <ProtectedRoute>
+          <Private>
             <ReaderPage />
-          </ProtectedRoute>
+          </Private>
         }
       />
       <Route
         path="/word/:word"
         element={
-          <ProtectedRoute>
+          <Private>
             <WordDetailPage />
-          </ProtectedRoute>
+          </Private>
         }
       />
+      {/* The library used to live here. */}
+      <Route path="/browse" element={<Navigate to="/" replace />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )

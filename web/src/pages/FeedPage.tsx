@@ -1,17 +1,22 @@
-// Front-page clip feed (Feature A): a TikTok-style vertical stream of 30-90s
-// windows. The visible clip mounts a YouTube player looping its [start,end)
-// window; the rest show a thumbnail until scrolled into view. Tapping a word in
-// the caption opens its word-detail page (Feature B).
+// Shorts (Feature A): a TikTok-style vertical stream of 30-90s clip windows.
+// The visible clip mounts a YouTube player looping its [start,end) window; the
+// rest show a thumbnail until scrolled into view. Tapping a word in the caption
+// opens its word-detail page (Feature B).
+//
+// This used to be the landing page; browsing now lives in the library grid.
+// Mandatory snap plus an item taller than the viewport is a trap — the scroll
+// gesture that should reveal the rest of a long caption instead flings you to
+// the next clip. The item is pinned to exactly one viewport and the caption
+// scrolls inside it.
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api, ApiError, type FeedClip } from '../lib/api'
-import { useAuth } from '../auth/AuthContext'
+import { AppHeader } from '../components/AppHeader'
 import { useYouTubePlayer } from '../features/reader/useYouTubePlayer'
 
 const PAGE = 10
 
 export function FeedPage() {
-  const { logout } = useAuth()
   const [clips, setClips] = useState<FeedClip[]>([])
   const [nextOffset, setNextOffset] = useState<number | null>(0)
   const [error, setError] = useState<string | null>(null)
@@ -49,7 +54,7 @@ export function FeedPage() {
   if (error) {
     return (
       <div className="page">
-        <FeedHeader onLogout={logout} />
+        <AppHeader />
         <p className="error">{error}</p>
       </div>
     )
@@ -57,7 +62,7 @@ export function FeedPage() {
 
   return (
     <div className="page feed-page">
-      <FeedHeader onLogout={logout} />
+      <AppHeader />
       {clips.length === 0 ? (
         <p className="muted center">Loading feed…</p>
       ) : (
@@ -76,21 +81,6 @@ export function FeedPage() {
         </div>
       )}
     </div>
-  )
-}
-
-function FeedHeader({ onLogout }: { onLogout: () => void }) {
-  return (
-    <header className="topbar">
-      <strong>VidLingo</strong>
-      <span className="spacer" />
-      <Link to="/browse" className="link">
-        Browse
-      </Link>
-      <button className="link" onClick={onLogout}>
-        Log out
-      </button>
-    </header>
   )
 }
 
@@ -135,7 +125,10 @@ function FeedItem({
       )}
       <div className="feed-caption">
         <div className="feed-meta muted small">
-          {clip.title} · {clip.theme} · {(clip.duration_ms / 1000).toFixed(0)}s
+          <Link to={`/reader/${clip.lesson_id}`} className="link">
+            {clip.title}
+          </Link>{' '}
+          · {clip.difficulty} · {(clip.duration_ms / 1000).toFixed(0)}s
         </div>
         <TappableText text={clip.text_en} />
       </div>

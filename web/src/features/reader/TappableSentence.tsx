@@ -8,9 +8,12 @@ import type { Sentence, TokenSpan } from '../../lib/api'
 export function TappableSentence({
   sentence,
   onWordTap,
+  className = 'subtitle-en',
 }: {
   sentence: Sentence
   onWordTap: (token: TokenSpan) => void
+  /** The same markup serves the big active caption and the transcript rows. */
+  className?: string
 }) {
   const text = sentence.text_en
   const tokens = [...sentence.tokens].sort((a, b) => a.char_span[0] - b.char_span[0])
@@ -36,5 +39,5 @@ export function TappableSentence({
   })
   if (cursor < text.length) parts.push(<span key="tail">{text.slice(cursor)}</span>)
 
-  return <p className="subtitle-en">{parts}</p>
+  return <p className={className}>{parts}</p>
 }
