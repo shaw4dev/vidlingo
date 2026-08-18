@@ -45,7 +45,9 @@ COPY backend/app ./app
 COPY backend/alembic ./alembic
 COPY backend/alembic.ini ./alembic.ini
 COPY backend/samples ./samples
-RUN pip install --upgrade pip && pip install .
+# [llm] pulls in anthropic: the word card's Chinese gloss needs it at
+# runtime, and it no-ops without ANTHROPIC_API_KEY.
+RUN pip install --upgrade pip && pip install ".[llm]"
 
 COPY --from=client /build/dist ./static
 

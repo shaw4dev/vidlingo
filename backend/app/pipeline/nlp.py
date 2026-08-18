@@ -80,15 +80,26 @@ class PlaceholderTranslator:
         return [self.marker for _ in texts]
 
 
+class TranslationRefused(Exception):
+    """The model's safety classifiers declined the batch. Distinct from a
+    transport error: retrying the same text will be declined the same way."""
+
+
 class ClaudeTranslator:
     """Real translation via the Anthropic API (needs ANTHROPIC_API_KEY).
 
-    Imported lazily; not wired as the default so the pipeline stays dependency-
-    light. Enable with `--translate claude` on the CLI.
+    Imported lazily; `anthropic` is an optional extra (`pip install -e ".[llm]"`)
+    so the pipeline stays dependency-light. Enable with `--translate claude`.
+
+    Subtitles are translated in numbered batches rather than one call per line:
+    a line of dialogue out of context is often untranslatable ("Get out." is a
+    different sentence depending on what came before), and batching also keeps
+    the call count proportional to lessons rather than sentences.
     """
 
-    def __init__(self, model: str = "claude-opus-4-8"):
+    def __init__(self, model: str = "claude-opus-5", effort: str = "medium"):
         self.model = model
+        self.effort = effort
 
     def translate(self, texts: list[str]) -> list[str]:
         import os  # noqa: PLC0415
@@ -99,7 +110,10 @@ class ClaudeTranslator:
         joined = "\n".join(f"{i}. {t}" for i, t in enumerate(texts))
         msg = client.messages.create(
             model=self.model,
-            max_tokens=2000,
+            # Thinking is on by default on this model and shares the budget with
+            # the response, so leave real headroom or long batches truncate.
+            max_tokens=8000,
+            output_config={"effort": self.effort},
             messages=[
                 {
                     "role": "user",
@@ -111,7 +125,14 @@ class ClaudeTranslator:
                 }
             ],
         )
-        out = msg.content[0].text.strip().splitlines()
+        if msg.stop_reason == "refusal":
+            # A 200 with no usable content. Say so rather than crashing on an
+            # empty content list two lines down.
+            raise TranslationRefused(
+                getattr(msg.stop_details, "category", None) or "unspecified"
+            )
+        text = "".join(b.text for b in msg.content if b.type == "text")
+        out = text.strip().splitlines()
         cleaned = [re.sub(r"^\s*\d+\.\s*", "", line).strip() for line in out if line.strip()]
         if len(cleaned) != len(texts):  # fall back rather than misalign
             raise ValueError("translation line count mismatch")

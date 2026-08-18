@@ -16,6 +16,12 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Translation and the Chinese gloss on the word card. Optional because the app,
+# the API and the rest of the pipeline all run without it — but it was optional
+# and *undeclared*, which meant `--translate claude` could only ever ImportError.
+llm = [
+    "anthropic>=0.40",
+]
 dev = [
     "pytest>=8.0",
     "httpx>=0.27",
