@@ -23,17 +23,19 @@ Three things shaped the engineering more than the feature list did:
   explicitly rather than hoped away — see
   [Design notes](#design-notes-the-non-obvious-parts) below.
 
-**Status:** backend and web client are functional end to end against a live
-library; deployment (T10) is in progress, so there is no hosted demo yet — run
-it locally with the quick start below. Design docs: [`PRD_v1.md`](PRD_v1.md),
+**Status:** functional end to end against a live library of 39 ingested videos
+(Friends, The Office, TED, late-night). It ships as a single Docker image
+containing both halves, so `docker compose up` gives you the whole app on
+Postgres. Hosted demo pending. Design docs: [`PRD_v1.md`](PRD_v1.md),
 [`architecture.md`](architecture.md), [`tasks.md`](tasks.md).
 
 ## Repo layout
 ```
-backend/   FastAPI modular monolith (architecture.md §5)
-web/        React + Vite + TS app — the client (architecture.md §4, ADR-002); scaffolded in T11
-ios/        (parked) native iOS is backlog per ADR-002 — kept as a placeholder, not built for MVP
-.github/    CI workflows
+backend/     FastAPI modular monolith (architecture.md §5)
+web/         React + Vite + TS client (architecture.md §4, ADR-002)
+Dockerfile   multi-stage: builds web/, serves it and the API from one image
+ios/         (parked) native iOS is backlog per ADR-002 — placeholder, not built for MVP
+.github/     CI workflows
 ```
 
 ## Backend — quick start
@@ -50,8 +52,11 @@ pytest                           # test
 
 ## CI
 `.github/workflows/ci.yml` runs on push to `main` and PRs:
-- **backend**: ruff lint → pytest → import/build check.
-- **ios-build**: builds the Xcode project on a macOS runner once it exists (skips until then).
+- **backend**: ruff → pytest → package validation → migrate+seed → import check.
+- **web**: oxlint → `tsc -b` → production build.
+- **image**: builds the Docker image, runs the container, and checks it actually
+  answers — `/health`, a real API response, and a client-only deep link. The
+  image is the deployable artifact, so "it builds" isn't the interesting claim.
 
 ## Content packages
 A `LessonPackage` is the compiled, immutable learning unit (architecture.md §6).
@@ -87,6 +92,12 @@ python -m app.pipeline.run_discovery backfill run --translate claude
 # Feed clips for lessons ingested before clips existed (--all re-plans every lesson):
 python -m app.pipeline.backfill_clips
 ```
+Candidates are screened before any caption is fetched (`videos.list`, 1 unit per
+50 ids): a video that forbids embedding is a blank IFrame, and a channel's
+40-minute "best of season 5" compilation makes one lesson nobody finishes, so
+`--min-duration`/`--max-duration` bound what counts as a lesson. That screen is
+worth its quota because caption fetches — not API units — are the scarce
+resource.
 Word lookup also self-heals: `GET /words/{lemma}/occurrences` schedules a
 background backfill when a word has fewer than 3 occurrences, so it has more
 examples next visit. Quota is guarded (search = 100 of ~10k daily units): covered
@@ -104,15 +115,46 @@ npm run build        # type-check + production build
 Run the backend (above) on `:8000` first; the Vite dev server proxies `/api/*`
 to it, so no CORS setup is needed. Override the API base with `VITE_API_BASE`.
 
-## Docker (local stack)
-Run the API + Postgres together (architecture.md §12). Requires Docker Desktop.
+## Docker — the whole app in one container
+The root `Dockerfile` is multi-stage: a Node stage turns `web/` into static
+files and is then discarded, so `node_modules` never reaches the shipped image;
+the Python stage serves those files *and* the API from one process. That's the
+same image in development and in production — deployment runs the container,
+nothing more.
 ```bash
 cp .env.example .env             # optional: adjust creds / SECRET_KEY
-docker compose up --build        # API → http://localhost:8000/health
+docker compose up --build        # whole app → http://localhost:8000
 SEED_ON_START=1 docker compose up --build   # also load the demo lesson + user
+
+docker build -t vidlingo .       # or just the image, no compose
+docker run -p 8000:8000 -e DATABASE_URL=... vidlingo
 ```
-The API container applies Alembic migrations on start (`backend/docker-entrypoint.sh`),
-then serves uvicorn. Postgres data persists in the `pgdata` volume.
+Compose runs it against Postgres 16 (healthcheck-gated), so it rehearses
+production rather than a different arrangement of the same parts. The container
+applies Alembic migrations on start (`backend/docker-entrypoint.sh`); Postgres
+data persists in the `pgdata` volume.
+
+## Deployment
+`render.yaml` is a Render Blueprint declaring one Docker service. The database
+is deliberately *not* declared there: Render deletes free Postgres instances
+after 30 days, so `DATABASE_URL` points at an external managed Postgres instead
+— one environment variable to change providers.
+
+Moving the library into a fresh database is its own problem: re-running ingest
+there would re-fetch every caption, and YouTube rate-limits that endpoint by IP.
+`LessonPackage` is already the interchange format, so the corpus travels as
+validated JSON through the same ingestion path the pipeline uses:
+```bash
+cd backend
+python -m app.content.packages export --out ../content/packages   # from dev
+DATABASE_URL=<production> python -m app.content.packages load ../content/packages
+```
+The round trip is exact and tested — same rows, same ids. Clips are regenerated
+rather than exported, so a re-import picks up the current windowing strategy.
+Pruning is the other half of automatic ingest:
+```bash
+python -m app.db.remove_lesson yt_<id> [...]
+```
 
 ## Design notes: the non-obvious parts
 
@@ -162,4 +204,5 @@ both levels and pinned with a regression test.
 - **T13 ✅** Word card: tap any word for phonetic, audio, POS + senses, a Chinese gloss and the in-context meaning, plus add-to-vocab and reverse lookup. Definitions come from a free keyless dictionary composed with an optional Claude gloss (no free source has both), cached in `dictionary_entries` — one network call per lemma, ever. Client caches in memory + localStorage, 404s included.
 - **T16 ✅** Feed clips: `clips` table + swappable 30–90s windowing strategy, generated at ingest; `GET /feed` (theme/difficulty filters, offset paging, lesson-interleaving order). `backfill_clips` CLI for pre-existing lessons.
 - **T17 ✅** Content discovery + auto-sourcing: YouTube Data API v3 client with playlist/channel/search sources; `seed_corpus` batch ingest; `backfill_word` ingests only videos whose captions truly contain the lemma; quota guarded by a coverage check + `word_searches` cache. Wired into word lookup as a non-blocking background task; word lookup now lemmatizes its input.
+- **T10 🔨** Deployment: multi-stage image (Node build stage discarded; FastAPI serves the built client with an SPA deep-link fallback), `render.yaml` blueprint, CORS behind an env var, and `app.content.packages` to move the corpus into a fresh database as validated LessonPackages. CI builds the image and smoke-tests the running container. Hosting pending.
 - **T18 ✅** Web feed + word detail: `/` is a vertical snap-scroll clip feed (only the visible clip mounts a player, looping its window; thumbnails elsewhere; next page prefetched), every caption word links to `/word/:word`, which browses that lemma's real-video fragments with jump-into-Reader. Old lesson list moved to `/browse`. Build+lint clean.

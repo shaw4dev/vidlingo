@@ -41,21 +41,70 @@ jobs:
       - name: Build check (app imports)
         run: python -c "from app.main import app; print('app ok:', app.title)"
 
-  ios-build:
-    name: iOS (build)
-    runs-on: macos-14
-    # No Xcode project committed yet (scaffolded on a Mac in a later task).
-    # Skips cleanly until ios/VidLingo.xcodeproj exists.
+  web:
+    name: Web (lint · typecheck · build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build app if Xcode project exists
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Lint (oxlint)
+        run: npm run lint
+
+      # `npm run build` is `tsc -b && vite build`, so this is the type check too.
+      - name: Typecheck + build
+        run: npm run build
+
+  image:
+    name: Image (build · smoke test)
+    runs-on: ubuntu-latest
+    # The image is the deployable artifact, so "it builds" is not enough: this
+    # runs the container the way a host would and checks it actually answers.
+    # Catches the class of failure that otherwise only shows up in a deploy log.
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build
+        run: docker build -t vidlingo:ci .
+
+      - name: Run it
         run: |
-          if [ -d ios/VidLingo.xcodeproj ]; then
-            xcodebuild -project ios/VidLingo.xcodeproj \
-              -scheme VidLingo \
-              -destination 'platform=iOS Simulator,name=iPhone 15' \
-              build
-          else
-            echo "No Xcode project yet — skipping iOS build."
-          fi
+          docker run -d --name vidlingo \
+            -p 8000:8000 \
+            -e DATABASE_URL=sqlite:////tmp/ci.db \
+            -e SEED_ON_START=1 \
+            vidlingo:ci
+
+      - name: Wait for the health check
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:8000/health > /dev/null; then
+              echo "healthy after ${i}s"; exit 0
+            fi
+            sleep 1
+          done
+          echo "never became healthy:"; docker logs vidlingo; exit 1
+
+      - name: It serves the API
+        run: curl -fsS http://localhost:8000/lessons | grep -q '"id"'
+
+      - name: It serves the client, including deep links
+        run: |
+          curl -fsS http://localhost:8000/ | grep -qi '<div id="root"'
+          # A refresh on a client-only route must return the app, not a 404.
+          curl -fsS -H 'Accept: text/html' http://localhost:8000/vocab | grep -qi '<div id="root"'
+
+      - name: Logs on failure
+        if: failure()
+        run: docker logs vidlingo
