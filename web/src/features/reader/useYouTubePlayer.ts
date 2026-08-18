@@ -9,6 +9,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { loadYouTubeApi, type YTPlayer } from '../../lib/youtube'
 
+/** VidLingo renders its own bilingual subtitles; YouTube's would double up.
+ *  `cc_load_policy: 0` is not enough on accounts that have captions switched on
+ *  globally — that preference re-enables the module after load, so unload it. */
+function silenceNativeCaptions(player: YTPlayer) {
+  // Two module names across player versions; unloading an absent one is a no-op.
+  for (const mod of ['captions', 'cc']) {
+    try {
+      player.unloadModule?.(mod)
+    } catch {
+      /* module not present in this player build */
+    }
+  }
+}
+
 export interface PlayerControls {
   play: () => void
   pause: () => void
@@ -36,13 +50,28 @@ export function useYouTubePlayer(youtubeId: string | null) {
       if (cancelled) return
       player = new YT.Player(host, {
         videoId: youtubeId,
-        playerVars: { rel: 0, modestbranding: 1, playsinline: 1 },
+        playerVars: {
+          rel: 0, // related videos, when shown, stay on the same channel
+          modestbranding: 1,
+          playsinline: 1,
+          cc_load_policy: 0, // don't force YouTube's own captions on
+          iv_load_policy: 3, // no annotation cards over the video
+          fs: 0, // fullscreen would hide our subtitles, which are the lesson
+          disablekb: 1, // arrow keys belong to sentence stepping, not the player
+        },
         events: {
           onReady: (e) => {
             playerRef.current = e.target
+            silenceNativeCaptions(e.target)
             setReady(true)
           },
-          onStateChange: (e) => setPlaying(e.data === YT.PlayerState.PLAYING),
+          onStateChange: (e) => {
+            // The captions module is only loaded once playback starts, so a
+            // player-var alone doesn't win: unload it again on every state
+            // change until it stops coming back.
+            silenceNativeCaptions(e.target)
+            setPlaying(e.data === YT.PlayerState.PLAYING)
+          },
         },
       })
     })

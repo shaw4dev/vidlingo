@@ -9,6 +9,8 @@ export interface YTPlayer {
   getDuration(): number
   setPlaybackRate(rate: number): void
   getPlayerState(): number
+  /** Undocumented but long-standing; absent on some builds, hence optional. */
+  unloadModule?(module: string): void
   destroy(): void
 }
 
