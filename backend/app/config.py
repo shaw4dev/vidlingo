@@ -22,5 +22,13 @@ class Settings:
     # need it; the app and the rest of the pipeline run without it.
     youtube_api_key: str | None = os.getenv("YOUTUBE_API_KEY")
 
+    # Browser origins allowed to call the API, comma-separated. Empty in dev:
+    # Vite proxies /api to :8000, so the browser stays same-origin and CORS
+    # never enters the picture (ADR-002). It only becomes real once the built
+    # client is served from its own host, which is what deployment does.
+    cors_origins: list[str] = [
+        o.strip() for o in os.getenv("CORS_ORIGINS", "").split(",") if o.strip()
+    ]
+
 
 settings = Settings()

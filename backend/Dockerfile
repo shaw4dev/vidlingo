@@ -28,4 +28,5 @@ EXPOSE 8000
 
 # Entrypoint applies migrations (and optional seed) before serving.
 ENTRYPOINT ["docker-entrypoint.sh"]
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Hosting platforms (Render, Fly, Cloud Run) inject the port to bind as $PORT.
+CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
