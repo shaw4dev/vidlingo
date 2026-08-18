@@ -41,6 +41,10 @@ node_modules/
 *.sqlite3
 
 # Data / media (never commit content or large media)
+# content/packages/ is the exported corpus (app.content.packages) - it is how the
+# library reaches a production DB, but it's caption text from third-party videos
+# and is regenerable, so it moves out of band rather than through the repo.
+content/packages/
 *.mp4
 *.mov
 *.wav
