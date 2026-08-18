@@ -1,7 +1,12 @@
-# Local stack: VidLingo API + Postgres (tasks.md T09).
-#   docker compose up --build        -> API on http://localhost:8000/health
+# Local stack: the whole VidLingo app + Postgres (tasks.md T09/T10).
+#   docker compose up --build   -> http://localhost:8000  (client + API)
 #   SEED_ON_START=1 docker compose up --build   -> also loads the demo lesson/user
 # Config via .env (see .env.example).
+#
+# This runs the same image that gets deployed — one container serving the built
+# client and the API against a real Postgres, not SQLite. So "works in compose"
+# is a genuine rehearsal for production rather than a different arrangement of
+# the same parts.
 
 services:
   db:
@@ -20,8 +25,9 @@ services:
     ports:
       - "5432:5432"
 
-  api:
-    build: ./backend
+  app:
+    # Repo root: the build needs backend/ and web/ (see Dockerfile).
+    build: .
     depends_on:
       db:
         condition: service_healthy

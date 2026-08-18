@@ -1,60 +1,42 @@
 # Render Blueprint (tasks.md T10) — the deployed topology, in the repo.
 #
-#   API     Docker image built from backend/, migrations applied on boot
-#   Client  the Vite build, served as static files from a CDN
-#   DB      external managed Postgres (Neon) — see the note below
+# One Docker service. The image built by ./Dockerfile contains the built web
+# client and the API, so Render's only job is to run the same container that
+# runs locally under `docker compose up`. Nothing about the app is
+# Render-specific: moving to Fly, Cloud Run or a VPS means running this image
+# somewhere else and setting the same three environment variables.
 #
-# Why the database isn't declared here: Render's free Postgres is deleted 30 days
-# after creation, which is exactly the wrong failure mode for a link on a CV. The
-# API therefore takes DATABASE_URL as a secret pointing at a Neon instance, whose
-# free tier persists. Swapping providers means changing one env var.
+# The database is deliberately not declared here. Render deletes free Postgres
+# instances 30 days after creation, which is the wrong failure mode for a link
+# on a CV, so DATABASE_URL points at an external managed Postgres (Neon) whose
+# free tier persists. Swapping providers is one environment variable.
 #
-# Why two services instead of serving the client from FastAPI: a free instance
-# spins down when idle, so the first request after a pause waits on a cold start.
-# With the client on the CDN the page paints immediately and only its data waits,
-# which is a much better first impression than a blank tab. The cost is that the
-# browser is no longer same-origin with the API, so CORS_ORIGINS has to name the
-# client's URL (app/main.py).
+# Deploy: Render dashboard -> Blueprints -> point at this repo. The `sync: false`
+# values are entered once in the dashboard and never committed.
 #
-# Deploy: Render dashboard -> Blueprints -> point at this repo. The three
-# `sync: false` values are entered once in the dashboard and never committed.
+# Note on the free plan: an idle instance is spun down and the next request pays
+# a cold start of roughly a minute. That is the cost of not putting the client
+# on a CDN separately; the tradeoff bought a single artifact that is identical
+# in development and production.
 
 services:
   - type: web
-    name: vidlingo-api
+    name: vidlingo
     runtime: docker
     plan: free
     region: singapore
-    dockerfilePath: ./backend/Dockerfile
-    dockerContext: ./backend
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
     healthCheckPath: /health
     envVars:
       # postgresql+psycopg://USER:PASSWORD@HOST/DB?sslmode=require
       - key: DATABASE_URL
-        sync: false
-      # Comma-separated; the static site's URL. Without it the browser blocks
-      # every call and the app looks broken while the API is perfectly healthy.
-      - key: CORS_ORIGINS
         sync: false
       - key: SECRET_KEY
         generateValue: true
       # Optional: the Chinese gloss on the word card. Absent -> English senses.
       - key: ANTHROPIC_API_KEY
         sync: false
-
-  - type: web
-    name: vidlingo-web
-    runtime: static
-    rootDir: ./web
-    buildCommand: npm ci && npm run build
-    staticPublishPath: dist
-    envVars:
-      # The API service's URL, e.g. https://vidlingo-api.onrender.com
-      - key: VITE_API_BASE
+      # Optional: on-demand word backfill. Absent -> that feature no-ops.
+      - key: YOUTUBE_API_KEY
         sync: false
-    routes:
-      # A single-page app: every path has to reach index.html or a refresh on
-      # /reader/<id> 404s.
-      - type: rewrite
-        source: /*
-        destination: /index.html

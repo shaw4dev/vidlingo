@@ -22,6 +22,10 @@ class Settings:
     # need it; the app and the rest of the pipeline run without it.
     youtube_api_key: str | None = os.getenv("YOUTUBE_API_KEY")
 
+    # Directory holding the built web client. Set in the deployed image, where
+    # one container serves both; unset in dev, where Vite owns the client.
+    static_dir: str | None = os.getenv("STATIC_DIR")
+
     # Browser origins allowed to call the API, comma-separated. Empty in dev:
     # Vite proxies /api to :8000, so the browser stays same-origin and CORS
     # never enters the picture (ADR-002). It only becomes real once the built
