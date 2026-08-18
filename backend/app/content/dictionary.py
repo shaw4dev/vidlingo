@@ -37,6 +37,10 @@ log = logging.getLogger(__name__)
 
 _FREE_DICT_BASE = "https://api.dictionaryapi.dev/api/v2/entries/en"
 
+# dictionaryapi.dev sits behind Cloudflare, which 403s (error 1010) on the
+# default "Python-urllib/3.x" agent. Identifying ourselves is the whole fix.
+_USER_AGENT = "VidLingo/1.0 (+https://github.com/shaw4dev/vidlingo)"
+
 # Keep the card readable: a long dictionary entry is worse than a short one here.
 MAX_SENSES = 4
 
@@ -98,8 +102,9 @@ class FreeDictionaryProvider:
 
     def lookup(self, word: str) -> Definition | None:
         url = f"{_FREE_DICT_BASE}/{urllib.parse.quote(word)}"
+        req = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})
         try:
-            with urllib.request.urlopen(url, timeout=self._timeout) as resp:  # noqa: S310
+            with urllib.request.urlopen(req, timeout=self._timeout) as resp:  # noqa: S310
                 payload = json.loads(resp.read().decode("utf-8"))
         except urllib.error.HTTPError as exc:
             if exc.code == 404:

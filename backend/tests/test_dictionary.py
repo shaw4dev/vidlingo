@@ -222,3 +222,36 @@ def test_definition_endpoint_serves_a_cached_row_without_the_provider(client, db
 
     assert body["gloss_zh"] == "跑"
     assert provider.calls == []
+
+
+def test_free_dictionary_identifies_itself(monkeypatch):
+    """Cloudflare 403s (error 1010) the default urllib agent, so the request
+    must carry a real User-Agent. Regression guard: dropping the header turns
+    every word card into a 502."""
+    import urllib.request
+
+    from app.content import dictionary as dict_mod
+
+    captured: dict[str, object] = {}
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def read(self):
+            return json.dumps([{"word": "run", "phonetic": "/rʌn/"}]).encode()
+
+    def fake_urlopen(req, timeout=None):  # noqa: ARG001
+        captured["url"] = req.full_url
+        captured["ua"] = req.get_header("User-agent")
+        return FakeResponse()
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    dict_mod.FreeDictionaryProvider().lookup("run")
+
+    assert captured["url"].endswith("/run")
+    assert captured["ua"] == dict_mod._USER_AGENT
+    assert "urllib" not in str(captured["ua"]).lower()
