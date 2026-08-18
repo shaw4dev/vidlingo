@@ -15,6 +15,7 @@ lazily and injected, so sources are fully testable offline with a fake client.
 from __future__ import annotations
 
 import json
+import re
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -22,6 +23,25 @@ from dataclasses import dataclass
 from typing import Protocol
 
 _API_BASE = "https://www.googleapis.com/youtube/v3"
+
+# A lesson is a video plus its whole transcript, so length is a content decision,
+# not a detail. Under a minute yields too few sentences to be worth a lesson;
+# a channel's 40-minute "best of season 5" compilation is a different thing
+# entirely — jump-cut between unrelated scenes, and one lesson nobody finishes.
+DEFAULT_MIN_DURATION_S = 60
+DEFAULT_MAX_DURATION_S = 900
+
+_ISO_DURATION = re.compile(r"^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$")
+
+
+def parse_iso_duration(value: str | None) -> int | None:
+    """YouTube's ISO-8601 duration -> seconds. None if unparseable (live
+    streams report P0D), which callers treat as 'unknown, don't ingest'."""
+    m = _ISO_DURATION.match(value or "")
+    if not m:
+        return None
+    hours, minutes, seconds = (int(g or 0) for g in m.groups())
+    return hours * 3600 + minutes * 60 + seconds
 
 
 class DiscoveryError(Exception):
@@ -126,6 +146,46 @@ class YouTubeDataAPI:
                 )
         return out
 
+    def screen_playable(
+        self,
+        candidates: list[VideoCandidate],
+        *,
+        min_duration_s: int = DEFAULT_MIN_DURATION_S,
+        max_duration_s: int = DEFAULT_MAX_DURATION_S,
+    ) -> list[VideoCandidate]:
+        """Drop candidates that would waste a caption fetch, preserving order.
+
+        `search_videos` gets embeddability for free as a query parameter;
+        playlist and channel candidates have no such filter, so they arrive
+        unscreened and the first sign of trouble is a blank IFrame in the
+        reader — or a 40-minute compilation ingested as one lesson. videos.list
+        costs 1 unit per 50 ids and answers both questions, which is far
+        cheaper than the caption fetch it avoids (those are rate-limited by IP,
+        the scarcest budget the pipeline has).
+        """
+        if not candidates:
+            return []
+
+        keep: set[str] = set()
+        ids = [c.youtube_id for c in candidates]
+        for start in range(0, len(ids), 50):
+            batch = ids[start : start + 50]
+            data = self._get(
+                "videos", {"part": "contentDetails,status", "id": ",".join(batch)}
+            )
+            for item in data.get("items", []):
+                status = item.get("status", {})
+                seconds = parse_iso_duration(item.get("contentDetails", {}).get("duration"))
+                if (
+                    status.get("embeddable")
+                    and status.get("privacyStatus") == "public"
+                    and seconds is not None
+                    and min_duration_s <= seconds <= max_duration_s
+                ):
+                    keep.add(item["id"])
+
+        return [c for c in candidates if c.youtube_id in keep]
+
     def channel_uploads_playlist(self, channel_id: str) -> str:
         """Resolve a channel's 'uploads' playlist id (needed to list its videos)."""
         data = self._get("channels", {"part": "contentDetails", "id": channel_id})
@@ -146,6 +206,9 @@ class VideoSource(Protocol):
 class PlaylistSource:
     playlist_id: str
     theme: str | None = None
+    # playlistItems can't pre-filter, and screening throws candidates away, so
+    # ask for more than we need. It costs 1 unit per extra 50 ids.
+    overfetch = 3
 
     def discover(self, api: YouTubeDataAPI, limit: int) -> list[VideoCandidate]:
         return _tag_theme(api.playlist_video_ids(self.playlist_id, limit), self.theme)
@@ -155,6 +218,7 @@ class PlaylistSource:
 class ChannelSource:
     channel_id: str
     theme: str | None = None
+    overfetch = 3
 
     def discover(self, api: YouTubeDataAPI, limit: int) -> list[VideoCandidate]:
         uploads = api.channel_uploads_playlist(self.channel_id)
@@ -165,6 +229,9 @@ class ChannelSource:
 class SearchSource:
     query: str
     theme: str | None = None
+    # 100 units a call — over-fetching here is the expensive mistake, and
+    # search.list has already filtered for captions and embeddability.
+    overfetch = 1
 
     def discover(self, api: YouTubeDataAPI, limit: int) -> list[VideoCandidate]:
         return _tag_theme(api.search_videos(self.query, limit), self.theme)

@@ -22,7 +22,13 @@ from sqlalchemy.orm import Session
 
 from app.db.models import Lesson, WordIndex, WordSearch
 from app.pipeline.captions import CaptionFetcher, CaptionsBlockedError, NoCaptionsError
-from app.pipeline.discovery import VideoCandidate, VideoSource, YouTubeDataAPI
+from app.pipeline.discovery import (
+    DEFAULT_MAX_DURATION_S,
+    DEFAULT_MIN_DURATION_S,
+    VideoCandidate,
+    VideoSource,
+    YouTubeDataAPI,
+)
 from app.pipeline.nlp import Translator, lemmatize, tokenize
 from app.pipeline.pipeline import LessonMeta, ingest_from_cues
 
@@ -40,6 +46,7 @@ class SeedReport:
     ingested: list[str] = field(default_factory=list)
     skipped_existing: list[str] = field(default_factory=list)
     skipped_no_captions: list[str] = field(default_factory=list)
+    skipped_unplayable: list[str] = field(default_factory=list)  # not embeddable/too long
     failed: list[tuple[str, str]] = field(default_factory=list)  # (id, error)
     blocked: str | None = None  # set when YouTube cut us off; batch stopped early
 
@@ -47,7 +54,8 @@ class SeedReport:
     def summary(self) -> str:
         base = (
             f"ingested={len(self.ingested)} existing={len(self.skipped_existing)} "
-            f"no_captions={len(self.skipped_no_captions)} failed={len(self.failed)}"
+            f"no_captions={len(self.skipped_no_captions)} "
+            f"unplayable={len(self.skipped_unplayable)} failed={len(self.failed)}"
         )
         return f"{base} ABORTED (blocked: {self.blocked})" if self.blocked else base
 
@@ -79,12 +87,26 @@ def seed_corpus(
     *,
     per_source: int = 25,
     default_theme: str = "general",
+    min_duration_s: int = DEFAULT_MIN_DURATION_S,
+    max_duration_s: int = DEFAULT_MAX_DURATION_S,
 ) -> SeedReport:
     """Discover candidates from each source and ingest the ones with captions."""
     report = SeedReport()
     seen: set[str] = set()
     for source in sources:
-        for cand in source.discover(api, per_source):
+        # Playlist/channel candidates arrive unscreened, so over-fetch and let
+        # the screen cut them back to per_source; search already filtered.
+        wanted = per_source * getattr(source, "overfetch", 1)
+        candidates = source.discover(api, wanted)
+        playable = api.screen_playable(
+            candidates, min_duration_s=min_duration_s, max_duration_s=max_duration_s
+        )
+        kept = {c.youtube_id for c in playable}
+        report.skipped_unplayable.extend(
+            c.youtube_id for c in candidates if c.youtube_id not in kept
+        )
+
+        for cand in playable[:per_source]:
             if cand.youtube_id in seen:
                 continue
             seen.add(cand.youtube_id)

@@ -21,6 +21,8 @@ from app.config import settings
 from app.db.session import SessionLocal
 from app.pipeline.captions import YouTubeTranscriptFetcher
 from app.pipeline.discovery import (
+    DEFAULT_MAX_DURATION_S,
+    DEFAULT_MIN_DURATION_S,
     ChannelSource,
     DiscoveryError,
     PlaylistSource,
@@ -74,6 +76,22 @@ def main(argv: list[str]) -> int:
     seed_p.add_argument("--channel", action="append", metavar="ID[:theme]")
     seed_p.add_argument("--search", action="append", metavar="QUERY[:theme]")
     seed_p.add_argument("--per-source", type=int, default=25)
+    seed_p.add_argument(
+        "--min-duration",
+        type=int,
+        default=DEFAULT_MIN_DURATION_S,
+        help=f"skip videos shorter than N seconds (default {DEFAULT_MIN_DURATION_S})",
+    )
+    seed_p.add_argument(
+        "--max-duration",
+        type=int,
+        default=DEFAULT_MAX_DURATION_S,
+        help=(
+            f"skip videos longer than N seconds (default {DEFAULT_MAX_DURATION_S}). "
+            "Channel playlists are full of hour-long compilations, which make one "
+            "unusable lesson each"
+        ),
+    )
 
     bf_p = sub.add_parser("backfill", help="ingest videos containing a word")
     bf_p.add_argument("word")
@@ -102,7 +120,14 @@ def main(argv: list[str]) -> int:
                     print("ERROR: give at least one --playlist/--channel/--search", file=sys.stderr)
                     return 2
                 report = seed_corpus(
-                    session, sources, api, fetcher, translator, per_source=args.per_source
+                    session,
+                    sources,
+                    api,
+                    fetcher,
+                    translator,
+                    per_source=args.per_source,
+                    min_duration_s=args.min_duration,
+                    max_duration_s=args.max_duration,
                 )
                 print(f"SEED  {report.summary}")
                 for vid, err in report.failed:

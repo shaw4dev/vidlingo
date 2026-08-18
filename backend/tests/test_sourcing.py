@@ -2,7 +2,7 @@ from sqlalchemy import func, select
 
 from app.db.models import Lesson, WordSearch
 from app.pipeline.captions import CaptionCue, CaptionsBlockedError, NoCaptionsError
-from app.pipeline.discovery import PlaylistSource, VideoCandidate
+from app.pipeline.discovery import PlaylistSource, SearchSource, VideoCandidate
 from app.pipeline.nlp import PlaceholderTranslator
 from app.pipeline.pipeline import LessonMeta, ingest_from_cues
 from app.pipeline.sourcing import backfill_word, seed_corpus
@@ -20,15 +20,20 @@ VID = "vvvvvvvvvvv"
 
 
 class FakeAPI:
-    def __init__(self, *, search=None, playlists=None):
+    def __init__(self, *, search=None, playlists=None, unplayable=()):
         self._search = search or {}
         self._playlists = playlists or {}
+        self._unplayable = set(unplayable)
 
     def search_videos(self, query, max_results=25):
         return self._search.get(query, [])[:max_results]
 
     def playlist_video_ids(self, pid, max_results=200):
         return self._playlists.get(pid, [])[:max_results]
+
+    def screen_playable(self, candidates, **_kwargs):
+        """Stands in for the videos.list check; `unplayable` names the rejects."""
+        return [c for c in candidates if c.youtube_id not in self._unplayable]
 
 
 class FakeFetcher:
@@ -61,6 +66,64 @@ def test_seed_ingests_captioned_skips_others(db):
     assert report.ingested == [HAS_CAPS]
     assert report.skipped_no_captions == [NO_CAPS]
     assert db.get(Lesson, f"yt_{HAS_CAPS}") is not None
+
+
+def test_seed_screens_candidates_before_spending_a_caption_fetch(db):
+    """Caption fetches are the scarce resource (YouTube rate-limits them by IP),
+    so an unplayable video must be dropped by the 1-unit videos.list check, not
+    discovered by failing to fetch it."""
+    api = FakeAPI(
+        playlists={"PL1": [VideoCandidate(HAS_CAPS, "Good"), VideoCandidate(NO_CAPS, "Huge")]},
+        unplayable={NO_CAPS},
+    )
+    fetched = []
+
+    class RecordingFetcher(FakeFetcher):
+        def fetch(self, youtube_id):
+            fetched.append(youtube_id)
+            return super().fetch(youtube_id)
+
+    fetcher = RecordingFetcher({HAS_CAPS: _cue("Hello there friend."), NO_CAPS: _cue("Hi.")})
+    report = seed_corpus(db, [PlaylistSource("PL1")], api, fetcher, PlaceholderTranslator())
+
+    assert report.ingested == [HAS_CAPS]
+    assert report.skipped_unplayable == [NO_CAPS]
+    assert fetched == [HAS_CAPS]  # the reject never cost a fetch
+
+
+def test_seed_overfetches_playlists_but_not_searches(db):
+    """Screening throws candidates away, so playlist sources ask for more than
+    per_source. Search costs 100 units a call and is already filtered, so it
+    must not be over-fetched."""
+    asked = {}
+
+    class RecordingAPI(FakeAPI):
+        def playlist_video_ids(self, pid, max_results=200):
+            asked["playlist"] = max_results
+            return super().playlist_video_ids(pid, max_results)
+
+        def search_videos(self, query, max_results=25):
+            asked["search"] = max_results
+            return super().search_videos(query, max_results)
+
+    api = RecordingAPI(playlists={"PL1": []}, search={"q": []})
+    fetcher = FakeFetcher({})
+    seed_corpus(db, [PlaylistSource("PL1")], api, fetcher, PlaceholderTranslator(), per_source=10)
+    seed_corpus(db, [SearchSource("q")], api, fetcher, PlaceholderTranslator(), per_source=10)
+
+    assert asked["playlist"] > 10
+    assert asked["search"] == 10
+
+
+def test_seed_never_ingests_more_than_per_source(db):
+    """Over-fetching is a screening allowance, not a bigger batch."""
+    ids = [f"vidvidvi{i:03d}" for i in range(9)]
+    api = FakeAPI(playlists={"PL1": [VideoCandidate(v, v) for v in ids]})
+    fetcher = FakeFetcher({v: _cue("Words go here.") for v in ids})
+    report = seed_corpus(
+        db, [PlaylistSource("PL1")], api, fetcher, PlaceholderTranslator(), per_source=3
+    )
+    assert len(report.ingested) == 3
 
 
 def test_seed_skips_already_ingested_and_dedups(db):
