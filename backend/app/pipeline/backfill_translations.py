@@ -30,7 +30,12 @@ from sqlalchemy.orm import Session
 
 from app.db.models import Sentence
 from app.db.session import SessionLocal
-from app.pipeline.nlp import LLMTranslator, PlaceholderTranslator, TranslationRefused
+from app.pipeline.nlp import (
+    LLMTranslator,
+    PlaceholderTranslator,
+    TranslationRefused,
+    TranslationTruncated,
+)
 
 PLACEHOLDER = PlaceholderTranslator.marker
 
@@ -107,6 +112,11 @@ def run(
             # Says nothing about the other batches — keep going.
             print(f"  REFUSED batch {i} ({exc})", file=sys.stderr)
             continue
+        except TranslationTruncated as exc:
+            # Splitting wouldn't help — the budget, not the batch, was the
+            # problem. Leave the placeholders for a re-run with more headroom.
+            print(f"  TRUNCATED batch {i} ({exc})", file=sys.stderr)
+            continue
         # Commit per batch: an interrupted run keeps everything it paid for.
         session.commit()
         print(f"  [{i}/{len(batches)}] {batch[0].lesson_id}  +{len(batch)}")
@@ -131,6 +141,15 @@ def main(argv: list[str]) -> int:
     )
     parser.add_argument("--limit", type=int, help="stop after N sentences (dry-run sizing)")
     parser.add_argument(
+        "--thinking",
+        action="store_true",
+        help=(
+            "let the model think before answering. Off by default: translation "
+            "is recall, not reasoning, and reasoning models spend the entire "
+            "output budget on it and return nothing"
+        ),
+    )
+    parser.add_argument(
         "--effort",
         default="medium",
         choices=["low", "medium", "high"],
@@ -147,7 +166,7 @@ def main(argv: list[str]) -> int:
         print("ERROR: ANTHROPIC_API_KEY is not set", file=sys.stderr)
         return 2
 
-    translator = LLMTranslator(model=args.model, effort=args.effort)
+    translator = LLMTranslator(model=args.model, effort=args.effort, thinking=args.thinking)
     with SessionLocal() as session:
         return run(
             session,

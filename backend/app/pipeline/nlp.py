@@ -72,7 +72,7 @@ class Translator(Protocol):
 class PlaceholderTranslator:
     """Dev default: emits a non-empty placeholder so packages validate offline.
 
-    NOT real translation. Swap in ClaudeTranslator (below) for usable content.
+    NOT real translation. Swap in LLMTranslator (below) for usable content.
     """
 
     marker = "（待翻译）"
@@ -84,6 +84,15 @@ class PlaceholderTranslator:
 class TranslationRefused(Exception):
     """The model's safety classifiers declined the batch. Distinct from a
     transport error: retrying the same text will be declined the same way."""
+
+
+class TranslationTruncated(Exception):
+    """The reply hit max_tokens before the translation was finished.
+
+    Kept separate from a misaligned reply because the remedies are opposite:
+    a misaligned batch is worth splitting, a truncated one is not — splitting
+    a batch that ran out of budget just spends the same budget N more times.
+    """
 
 
 class LLMTranslator:
@@ -106,9 +115,14 @@ class LLMTranslator:
 
     DEFAULT_MODEL = "claude-opus-5"
 
-    def __init__(self, model: str | None = None, effort: str = "medium"):
+    def __init__(self, model: str | None = None, effort: str = "medium", thinking: bool = False):
         self.model = model or os.getenv("TRANSLATE_MODEL") or self.DEFAULT_MODEL
         self.effort = effort
+        # Translation is recall, not reasoning, and reasoning models spend the
+        # whole output budget on it: `deepseek-v4-pro` burned all 8000 tokens
+        # thinking about eight garbled caption lines and returned no text at
+        # all. Off by default; the same batch then costs 125 tokens and 3s.
+        self.thinking = thinking
 
     def translate(self, texts: list[str]) -> list[str]:
         from anthropic import Anthropic  # noqa: PLC0415
@@ -117,6 +131,8 @@ class LLMTranslator:
         joined = "\n".join(f"{i}. {t}" for i, t in enumerate(texts))
 
         extra: dict = {}
+        if not self.thinking:
+            extra["thinking"] = {"type": "disabled"}
         if not os.getenv("ANTHROPIC_BASE_URL"):
             # `effort` is an Anthropic-only parameter. A third-party gateway
             # that merely speaks the Messages wire format will usually 400 on
@@ -125,9 +141,8 @@ class LLMTranslator:
 
         msg = client.messages.create(
             model=self.model,
-            # On Anthropic's current models thinking is on by default and shares
-            # this budget with the response, so leave real headroom or long
-            # batches truncate mid-answer.
+            # Shared with thinking when thinking is on, so keep real headroom:
+            # a truncated reply is indistinguishable from a wrong one.
             max_tokens=8000,
             messages=[
                 {
@@ -147,6 +162,14 @@ class LLMTranslator:
             # stop reason simply never take the branch.
             raise TranslationRefused(
                 getattr(getattr(msg, "stop_details", None), "category", None) or "unspecified"
+            )
+        if msg.stop_reason == "max_tokens":
+            # Almost always means the budget went somewhere other than the
+            # answer. Say that, instead of letting an empty reply masquerade as
+            # a line-count mismatch and trigger a pointless split-and-retry.
+            raise TranslationTruncated(
+                f"hit max_tokens with {len(texts)} lines "
+                f"({msg.usage.output_tokens} output tokens, no usable text)"
             )
         text = "".join(b.text for b in msg.content if b.type == "text")
         out = text.strip().splitlines()
