@@ -6,6 +6,14 @@ routers here.
 In the deployed image this process also serves the built web client, so the
 whole app is one container (STATIC_DIR). In development it doesn't: Vite serves
 the client and proxies /api here, which is what keeps hot reload working.
+
+Every route lives under /api. That is not decoration: the client has its own
+`/vocab` page and the API has a `/vocab` endpoint, and with both mounted at the
+root the API wins — a browser navigating to /vocab got `401 Not authenticated`
+instead of the app. Prefixing the API keeps the two namespaces from ever
+colliding, and makes the deployed layout identical to the one Vite proxies in
+development rather than a second arrangement that has to be reasoned about
+separately.
 """
 
 from pathlib import Path
@@ -51,6 +59,9 @@ def _mount_client(app: FastAPI, static_dir: Path) -> None:
         return FileResponse(index)
 
 
+API_PREFIX = "/api"
+
+
 def create_app() -> FastAPI:
     app = FastAPI(
         title="VidLingo API",
@@ -68,10 +79,10 @@ def create_app() -> FastAPI:
             allow_credentials=False,
         )
 
-    app.include_router(health.router)
-    app.include_router(auth.router)
-    app.include_router(content.router)
-    app.include_router(vocab.router)
+    app.include_router(health.router, prefix=API_PREFIX)
+    app.include_router(auth.router, prefix=API_PREFIX)
+    app.include_router(content.router, prefix=API_PREFIX)
+    app.include_router(vocab.router, prefix=API_PREFIX)
 
     # Only in the deployed image; absent in dev, where Vite serves the client.
     static_dir = Path(settings.static_dir) if settings.static_dir else None

@@ -22,9 +22,8 @@ COPY web/package.json web/package-lock.json ./
 RUN npm ci
 
 COPY web/ ./
-# Same-origin in this image (FastAPI serves these files), so the client's
-# default /api base is wrong — point it at the API's own root.
-ENV VITE_API_BASE=""
+# No VITE_API_BASE override: the API is mounted under /api in every
+# environment, so the client's default base is already correct here.
 RUN npm run build
 
 # ---- stage 2: the runtime ---------------------------------------------------

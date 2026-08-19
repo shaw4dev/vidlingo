@@ -89,7 +89,7 @@ jobs:
       - name: Wait for the health check
         run: |
           for i in $(seq 1 30); do
-            if curl -fsS http://localhost:8000/health > /dev/null; then
+            if curl -fsS http://localhost:8000/api/health > /dev/null; then
               echo "healthy after ${i}s"; exit 0
             fi
             sleep 1
@@ -97,13 +97,15 @@ jobs:
           echo "never became healthy:"; docker logs vidlingo; exit 1
 
       - name: It serves the API
-        run: curl -fsS http://localhost:8000/lessons | grep -q '"id"'
+        run: curl -fsS http://localhost:8000/api/lessons | grep -q '"id"'
 
       - name: It serves the client, including deep links
         run: |
           curl -fsS http://localhost:8000/ | grep -qi '<div id="root"'
-          # A refresh on a client-only route must return the app, not a 404.
+          # /vocab is both a client page and an API endpoint. A browser
+          # navigating there must get the app; the API lives at /api/vocab.
           curl -fsS -H 'Accept: text/html' http://localhost:8000/vocab | grep -qi '<div id="root"'
+          curl -fsS -H 'Accept: text/html' http://localhost:8000/reader/yt_x | grep -qi '<div id="root"'
 
       - name: Logs on failure
         if: failure()

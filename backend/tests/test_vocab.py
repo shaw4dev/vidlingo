@@ -4,9 +4,9 @@ from app.db.seed import seed_initial
 
 
 def _auth(client, username="alice", password="secret123"):
-    client.post("/auth/register", json={"username": username, "password": password})
+    client.post("/api/auth/register", json={"username": username, "password": password})
     token = client.post(
-        "/auth/login", json={"username": username, "password": password}
+        "/api/auth/login", json={"username": username, "password": password}
     ).json()["access_token"]
     return {"Authorization": f"Bearer {token}"}
 
@@ -19,23 +19,23 @@ def seeded(client, db):
 
 def test_add_and_list_vocab(seeded):
     h = _auth(seeded)
-    resp = seeded.post("/vocab", json={"lemma": "go", "surface": "going"}, headers=h)
+    resp = seeded.post("/api/vocab", json={"lemma": "go", "surface": "going"}, headers=h)
     assert resp.status_code == 201
     assert resp.json()["lemma"] == "go"
 
-    items = seeded.get("/vocab", headers=h).json()
+    items = seeded.get("/api/vocab", headers=h).json()
     assert [i["lemma"] for i in items] == ["go"]
 
 
 def test_vocab_requires_auth(seeded):
-    assert seeded.get("/vocab").status_code == 401
-    assert seeded.post("/vocab", json={"lemma": "go"}).status_code == 401
+    assert seeded.get("/api/vocab").status_code == 401
+    assert seeded.post("/api/vocab", json={"lemma": "go"}).status_code == 401
 
 
 def test_add_with_source_sentence_embeds_ref(seeded):
     h = _auth(seeded)
     resp = seeded.post(
-        "/vocab",
+        "/api/vocab",
         json={"lemma": "go", "source_sentence_id": "vid_smalltalk_001:s1"},
         headers=h,
     )
@@ -50,51 +50,51 @@ def test_add_with_source_sentence_embeds_ref(seeded):
 def test_add_with_bad_source_sentence_404(seeded):
     h = _auth(seeded)
     resp = seeded.post(
-        "/vocab", json={"lemma": "go", "source_sentence_id": "nope"}, headers=h
+        "/api/vocab", json={"lemma": "go", "source_sentence_id": "nope"}, headers=h
     )
     assert resp.status_code == 404
 
 
 def test_duplicate_lemma_conflicts(seeded):
     h = _auth(seeded)
-    seeded.post("/vocab", json={"lemma": "go"}, headers=h)
-    assert seeded.post("/vocab", json={"lemma": "go"}, headers=h).status_code == 409
+    seeded.post("/api/vocab", json={"lemma": "go"}, headers=h)
+    assert seeded.post("/api/vocab", json={"lemma": "go"}, headers=h).status_code == 409
 
 
 def test_vocab_is_per_user(seeded):
     ha = _auth(seeded, "alice", "secret123")
     hb = _auth(seeded, "bob", "secret123")
-    seeded.post("/vocab", json={"lemma": "go"}, headers=ha)
-    seeded.post("/vocab", json={"lemma": "do"}, headers=hb)
+    seeded.post("/api/vocab", json={"lemma": "go"}, headers=ha)
+    seeded.post("/api/vocab", json={"lemma": "do"}, headers=hb)
 
-    assert [i["lemma"] for i in seeded.get("/vocab", headers=ha).json()] == ["go"]
-    assert [i["lemma"] for i in seeded.get("/vocab", headers=hb).json()] == ["do"]
+    assert [i["lemma"] for i in seeded.get("/api/vocab", headers=ha).json()] == ["go"]
+    assert [i["lemma"] for i in seeded.get("/api/vocab", headers=hb).json()] == ["do"]
 
 
 def test_update_mastery(seeded):
     h = _auth(seeded)
-    item = seeded.post("/vocab", json={"lemma": "go"}, headers=h).json()
-    resp = seeded.patch(f"/vocab/{item['id']}", json={"mastery": "mastered"}, headers=h)
+    item = seeded.post("/api/vocab", json={"lemma": "go"}, headers=h).json()
+    resp = seeded.patch(f"/api/vocab/{item['id']}", json={"mastery": "mastered"}, headers=h)
     assert resp.status_code == 200
     assert resp.json()["mastery"] == "mastered"
 
 
 def test_invalid_mastery_rejected(seeded):
     h = _auth(seeded)
-    item = seeded.post("/vocab", json={"lemma": "go"}, headers=h).json()
-    resp = seeded.patch(f"/vocab/{item['id']}", json={"mastery": "wizard"}, headers=h)
+    item = seeded.post("/api/vocab", json={"lemma": "go"}, headers=h).json()
+    resp = seeded.patch(f"/api/vocab/{item['id']}", json={"mastery": "wizard"}, headers=h)
     assert resp.status_code == 422
 
 
 def test_delete_vocab(seeded):
     h = _auth(seeded)
-    item = seeded.post("/vocab", json={"lemma": "go"}, headers=h).json()
-    assert seeded.delete(f"/vocab/{item['id']}", headers=h).status_code == 204
-    assert seeded.get("/vocab", headers=h).json() == []
+    item = seeded.post("/api/vocab", json={"lemma": "go"}, headers=h).json()
+    assert seeded.delete(f"/api/vocab/{item['id']}", headers=h).status_code == 204
+    assert seeded.get("/api/vocab", headers=h).json() == []
 
 
 def test_cannot_delete_others_item(seeded):
     ha = _auth(seeded, "alice", "secret123")
     hb = _auth(seeded, "bob", "secret123")
-    item = seeded.post("/vocab", json={"lemma": "go"}, headers=ha).json()
-    assert seeded.delete(f"/vocab/{item['id']}", headers=hb).status_code == 404
+    item = seeded.post("/api/vocab", json={"lemma": "go"}, headers=ha).json()
+    assert seeded.delete(f"/api/vocab/{item['id']}", headers=hb).status_code == 404

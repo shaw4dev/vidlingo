@@ -27,7 +27,7 @@ services:
     region: singapore
     dockerfilePath: ./Dockerfile
     dockerContext: .
-    healthCheckPath: /health
+    healthCheckPath: /api/health
     envVars:
       # postgresql+psycopg://USER:PASSWORD@HOST/DB?sslmode=require
       - key: DATABASE_URL

@@ -45,7 +45,7 @@ python -m venv .venv && source .venv/Scripts/activate   # Windows Git Bash
 #                       source .venv/bin/activate        # macOS/Linux
 pip install -e ".[dev]"
 
-uvicorn app.main:app --reload    # serve → http://127.0.0.1:8000/health
+uvicorn app.main:app --reload    # serve → http://127.0.0.1:8000/api/health
 ruff check .                     # lint
 pytest                           # test
 ```
@@ -55,7 +55,7 @@ pytest                           # test
 - **backend**: ruff → pytest → package validation → migrate+seed → import check.
 - **web**: oxlint → `tsc -b` → production build.
 - **image**: builds the Docker image, runs the container, and checks it actually
-  answers — `/health`, a real API response, and a client-only deep link. The
+  answers — `/api/health`, a real API response, and a client-only deep link. The
   image is the deployable artifact, so "it builds" isn't the interesting claim.
 
 ## Content packages
@@ -131,7 +131,10 @@ npm run dev          # → http://localhost:5173  (dev-proxies /api → :8000)
 npm run build        # type-check + production build
 ```
 Run the backend (above) on `:8000` first; the Vite dev server proxies `/api/*`
-to it, so no CORS setup is needed. Override the API base with `VITE_API_BASE`.
+to it verbatim — the backend mounts its own routes under `/api`, so the client
+addresses the API the same way in development and in the deployed image. No
+CORS setup is needed. Override the base with `VITE_API_BASE` if you ever split
+the client onto its own host.
 
 ## Docker — the whole app in one container
 The root `Dockerfile` is multi-stage: a Node stage turns `web/` into static

@@ -48,7 +48,7 @@ def feed_lessons(client, db):
 
 
 def test_list_lessons(seeded):
-    resp = seeded.get("/lessons")
+    resp = seeded.get("/api/lessons")
     assert resp.status_code == 200
     lessons = resp.json()
     assert len(lessons) == 1
@@ -57,14 +57,14 @@ def test_list_lessons(seeded):
 
 
 def test_list_lessons_filters(seeded):
-    assert len(seeded.get("/lessons", params={"theme": "small_talk"}).json()) == 1
-    assert len(seeded.get("/lessons", params={"theme": "travel"}).json()) == 0
-    assert len(seeded.get("/lessons", params={"difficulty": "easy"}).json()) == 1
-    assert len(seeded.get("/lessons", params={"difficulty": "hard"}).json()) == 0
+    assert len(seeded.get("/api/lessons", params={"theme": "small_talk"}).json()) == 1
+    assert len(seeded.get("/api/lessons", params={"theme": "travel"}).json()) == 0
+    assert len(seeded.get("/api/lessons", params={"difficulty": "easy"}).json()) == 1
+    assert len(seeded.get("/api/lessons", params={"difficulty": "hard"}).json()) == 0
 
 
 def test_get_lesson_detail_has_sentences_and_tokens(seeded):
-    resp = seeded.get("/lessons/vid_smalltalk_001")
+    resp = seeded.get("/api/lessons/vid_smalltalk_001")
     assert resp.status_code == 200
     lesson = resp.json()
     assert len(lesson["sentences"]) == 2
@@ -76,11 +76,11 @@ def test_get_lesson_detail_has_sentences_and_tokens(seeded):
 
 
 def test_get_missing_lesson_404(seeded):
-    assert seeded.get("/lessons/nope").status_code == 404
+    assert seeded.get("/api/lessons/nope").status_code == 404
 
 
 def test_word_occurrences(seeded):
-    resp = seeded.get("/words/go/occurrences")
+    resp = seeded.get("/api/words/go/occurrences")
     assert resp.status_code == 200
     body = resp.json()
     assert body["count"] == 1
@@ -91,18 +91,18 @@ def test_word_occurrences(seeded):
 
 
 def test_word_occurrences_case_insensitive(seeded):
-    assert seeded.get("/words/GO/occurrences").json()["count"] == 1
+    assert seeded.get("/api/words/GO/occurrences").json()["count"] == 1
 
 
 def test_word_occurrences_resolves_surface_form(seeded):
     # "going" lemmatizes to "go", which the sample lesson indexes
-    body = seeded.get("/words/going/occurrences").json()
+    body = seeded.get("/api/words/going/occurrences").json()
     assert body["lemma"] == "go"
     assert body["count"] == 1
 
 
 def test_word_occurrences_unknown_lemma(seeded):
-    body = seeded.get("/words/zzzznope/occurrences").json()
+    body = seeded.get("/api/words/zzzznope/occurrences").json()
     assert body["count"] == 0
     assert body["occurrences"] == []
 
@@ -111,26 +111,26 @@ def test_word_occurrences_unknown_lemma(seeded):
 
 def test_lookup_schedules_backfill_when_under_covered(seeded, backfill_spy):
     # "go" occurs once in the sample lesson — below MIN_COVERAGE (3)
-    seeded.get("/words/go/occurrences")
+    seeded.get("/api/words/go/occurrences")
     assert backfill_spy == ["go"]
 
 
 def test_lookup_no_backfill_when_well_covered(feed_lessons, backfill_spy):
     # "sentence" occurs 10x across the two feed lessons — well covered
-    body = feed_lessons.get("/words/sentence/occurrences").json()
+    body = feed_lessons.get("/api/words/sentence/occurrences").json()
     assert body["count"] >= 3
     assert backfill_spy == []
 
 
 def test_lookup_schedules_backfill_for_unknown_word(seeded, backfill_spy):
-    seeded.get("/words/zzzznope/occurrences")
+    seeded.get("/api/words/zzzznope/occurrences")
     assert backfill_spy == ["zzzznope"]
 
 
 # ---- feed ------------------------------------------------------------------
 
 def test_feed_returns_clips_with_playback_fields(seeded):
-    resp = seeded.get("/feed")
+    resp = seeded.get("/api/feed")
     assert resp.status_code == 200
     body = resp.json()
     assert len(body["clips"]) >= 1
@@ -144,17 +144,17 @@ def test_feed_returns_clips_with_playback_fields(seeded):
 def test_feed_interleaves_lessons(feed_lessons):
     # Each 200s lesson yields 3 clips (start_idx 0, 2, 4); ordering by start_idx
     # interleaves lessons, so the first two feed items are different lessons.
-    body = feed_lessons.get("/feed").json()
+    body = feed_lessons.get("/api/feed").json()
     assert len(body["clips"]) == 6
     assert body["clips"][0]["lesson_id"] != body["clips"][1]["lesson_id"]
 
 
 def test_feed_pagination(feed_lessons):
-    first = feed_lessons.get("/feed", params={"limit": 4}).json()
+    first = feed_lessons.get("/api/feed", params={"limit": 4}).json()
     assert len(first["clips"]) == 4
     assert first["next_offset"] == 4
 
-    second = feed_lessons.get("/feed", params={"limit": 4, "offset": 4}).json()
+    second = feed_lessons.get("/api/feed", params={"limit": 4, "offset": 4}).json()
     assert len(second["clips"]) == 2
     assert second["next_offset"] is None  # last page
 
@@ -163,12 +163,12 @@ def test_feed_pagination(feed_lessons):
 
 
 def test_feed_filters_by_theme(feed_lessons):
-    body = feed_lessons.get("/feed", params={"theme": "travel"}).json()
+    body = feed_lessons.get("/api/feed", params={"theme": "travel"}).json()
     assert len(body["clips"]) == 3
     assert all(c["theme"] == "travel" for c in body["clips"])
 
 
 def test_feed_empty_when_no_content(client):
-    body = client.get("/feed").json()
+    body = client.get("/api/feed").json()
     assert body["clips"] == []
     assert body["next_offset"] is None

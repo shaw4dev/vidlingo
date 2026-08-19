@@ -172,7 +172,7 @@ def _override(client, provider, gloss=None):
 def test_definition_endpoint_returns_the_card_payload(client):
     _override(client, FakeProvider({"run": _run("run")}))
 
-    res = client.get("/words/run/definition")
+    res = client.get("/api/words/run/definition")
 
     assert res.status_code == 200
     body = res.json()
@@ -187,7 +187,7 @@ def test_definition_endpoint_lemmatizes_the_tapped_surface_form(client):
     provider = FakeProvider({"run": _run("run")})
     _override(client, provider)
 
-    res = client.get("/words/running/definition")
+    res = client.get("/api/words/running/definition")
 
     assert res.status_code == 200
     assert res.json()["lemma"] == "run"
@@ -195,13 +195,13 @@ def test_definition_endpoint_lemmatizes_the_tapped_surface_form(client):
 
 def test_definition_endpoint_404s_for_an_unknown_word(client):
     _override(client, FakeProvider())
-    assert client.get("/words/zzzz/definition").status_code == 404
+    assert client.get("/api/words/zzzz/definition").status_code == 404
 
 
 def test_definition_endpoint_502s_when_the_dictionary_is_unreachable(client):
     _override(client, BoomProvider())
     # An unreachable dictionary is not the same as an unknown word.
-    assert client.get("/words/run/definition").status_code == 502
+    assert client.get("/api/words/run/definition").status_code == 502
 
 
 def test_definition_endpoint_serves_a_cached_row_without_the_provider(client, db):
@@ -218,7 +218,7 @@ def test_definition_endpoint_serves_a_cached_row_without_the_provider(client, db
     provider = FakeProvider()
     _override(client, provider)
 
-    body = client.get("/words/run/definition").json()
+    body = client.get("/api/words/run/definition").json()
 
     assert body["gloss_zh"] == "跑"
     assert provider.calls == []
