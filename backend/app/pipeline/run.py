@@ -1,7 +1,7 @@
 """CLI: ingest a YouTube video into the content library.
 
     python -m app.pipeline.run <youtube_id> --title "..." --theme small_talk \
-        [--source "Channel"] [--translate placeholder|claude]
+        [--source "Channel"] [--translate placeholder|llm]
 
 Exit codes: 0 ok, 3 no usable captions, 1 other error.
 """
@@ -13,7 +13,7 @@ import sys
 
 from app.db.session import SessionLocal
 from app.pipeline.captions import NoCaptionsError, YouTubeTranscriptFetcher
-from app.pipeline.nlp import ClaudeTranslator, PlaceholderTranslator
+from app.pipeline.nlp import LLMTranslator, PlaceholderTranslator
 from app.pipeline.pipeline import LessonMeta, ingest_youtube
 
 
@@ -23,10 +23,10 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--title", required=True)
     parser.add_argument("--theme", required=True)
     parser.add_argument("--source", default=None)
-    parser.add_argument("--translate", choices=["placeholder", "claude"], default="placeholder")
+    parser.add_argument("--translate", choices=["placeholder", "llm"], default="placeholder")
     args = parser.parse_args(argv)
 
-    translator = ClaudeTranslator() if args.translate == "claude" else PlaceholderTranslator()
+    translator = LLMTranslator() if args.translate == "llm" else PlaceholderTranslator()
     meta = LessonMeta(
         youtube_id=args.youtube_id, title=args.title, theme=args.theme, source=args.source
     )
@@ -44,7 +44,7 @@ def main(argv: list[str]) -> int:
 
     print(f"OK    {lesson.id}: {n} sentences ({args.translate} translation)")
     if args.translate == "placeholder":
-        print("      note: placeholder zh text — re-run with --translate claude for real content.")
+        print("      note: placeholder zh text — re-run with --translate llm for real content.")
     return 0
 
 

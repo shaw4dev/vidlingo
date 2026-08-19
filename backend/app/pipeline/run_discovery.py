@@ -3,10 +3,10 @@
     # Batch-seed the library from sources:
     python -m app.pipeline.run_discovery seed \
         --playlist PLxxxx:small_talk --channel UCxxxx:interviews \
-        --search "english small talk:small_talk" --per-source 25 --translate claude
+        --search "english small talk:small_talk" --per-source 25 --translate llm
 
     # On-demand backfill for one word:
-    python -m app.pipeline.run_discovery backfill run --translate claude
+    python -m app.pipeline.run_discovery backfill run --translate llm
 
 Requires YOUTUBE_API_KEY. Exit codes:
     0 ok    1 discovery error    2 usage/config error    3 blocked by YouTube
@@ -29,7 +29,7 @@ from app.pipeline.discovery import (
     SearchSource,
     YouTubeDataAPI,
 )
-from app.pipeline.nlp import ClaudeTranslator, PlaceholderTranslator
+from app.pipeline.nlp import LLMTranslator, PlaceholderTranslator
 from app.pipeline.sourcing import backfill_word, seed_corpus
 
 # ASCII only: this goes to a console that may not be UTF-8 (cp936 on zh-CN
@@ -46,7 +46,7 @@ _BLOCKED_HINT = (
 
 
 def _translator(name: str):
-    return ClaudeTranslator() if name == "claude" else PlaceholderTranslator()
+    return LLMTranslator() if name == "llm" else PlaceholderTranslator()
 
 
 def _parse_tagged(values: list[str], factory):
@@ -60,7 +60,7 @@ def _parse_tagged(values: list[str], factory):
 
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="app.pipeline.run_discovery")
-    parser.add_argument("--translate", choices=["placeholder", "claude"], default="placeholder")
+    parser.add_argument("--translate", choices=["placeholder", "llm"], default="placeholder")
     parser.add_argument(
         "--caption-interval",
         type=float,

@@ -4,11 +4,14 @@
     python -m app.pipeline.backfill_translations --all      # redo everything
     python -m app.pipeline.backfill_translations --lesson yt_abc123
 
-`--translate claude` only applies at ingest, so every lesson pulled in before a
+`--translate llm` only applies at ingest, so every lesson pulled in before a
 translation key existed carries `（待翻译）` in place of Chinese — which is the
 one thing a bilingual reader can't work around. Re-ingesting to fix that would
 re-fetch every caption, and YouTube rate-limits captions by IP; the sentences
 are already in the database, so translate them there.
+
+Any Anthropic-Messages-compatible endpoint works: set ANTHROPIC_BASE_URL and
+TRANSLATE_MODEL (or pass --model) to translate through a different provider.
 
 Batching is per lesson, in `idx` order, because a line of subtitle out of
 context is often untranslatable — "Get out." is a different sentence depending
@@ -27,7 +30,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models import Sentence
 from app.db.session import SessionLocal
-from app.pipeline.nlp import ClaudeTranslator, PlaceholderTranslator, TranslationRefused
+from app.pipeline.nlp import LLMTranslator, PlaceholderTranslator, TranslationRefused
 
 PLACEHOLDER = PlaceholderTranslator.marker
 
@@ -122,12 +125,19 @@ def main(argv: list[str]) -> int:
         help="re-translate every sentence, not just the placeholders",
     )
     parser.add_argument("--batch", type=int, default=20, help="sentences per API call")
+    parser.add_argument(
+        "--model",
+        help="model id; defaults to $TRANSLATE_MODEL, else Anthropic's current model",
+    )
     parser.add_argument("--limit", type=int, help="stop after N sentences (dry-run sizing)")
     parser.add_argument(
         "--effort",
         default="medium",
         choices=["low", "medium", "high"],
-        help="model effort; subtitles rarely need more than medium (default medium)",
+        help=(
+            "Anthropic effort level; subtitles rarely need more than medium. "
+            "Ignored when ANTHROPIC_BASE_URL points at another provider"
+        ),
     )
     args = parser.parse_args(argv)
 
@@ -137,7 +147,7 @@ def main(argv: list[str]) -> int:
         print("ERROR: ANTHROPIC_API_KEY is not set", file=sys.stderr)
         return 2
 
-    translator = ClaudeTranslator(effort=args.effort)
+    translator = LLMTranslator(model=args.model, effort=args.effort)
     with SessionLocal() as session:
         return run(
             session,

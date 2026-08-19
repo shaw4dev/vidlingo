@@ -84,13 +84,16 @@ cd backend
 # Batch-seed from playlists / channels / searches ("ID:theme" tags the lessons):
 python -m app.pipeline.run_discovery seed \
     --playlist PLxxxx:small_talk --channel UCxxxx:interviews \
-    --search "english cafe ordering:cafe" --per-source 25 --translate claude
+    --search "english cafe ordering:cafe" --per-source 25 --translate llm
 
 # Ingest videos whose captions actually contain one word:
-python -m app.pipeline.run_discovery backfill run --translate claude
+python -m app.pipeline.run_discovery backfill run --translate llm
 
 # Feed clips for lessons ingested before clips existed (--all re-plans every lesson):
 python -m app.pipeline.backfill_clips
+
+# Translate sentences already in the library (see Translation below):
+python -m app.pipeline.backfill_translations
 ```
 Candidates are screened before any caption is fetched (`videos.list`, 1 unit per
 50 ids): a video that forbids embedding is a blank IFrame, and a channel's
@@ -103,6 +106,21 @@ background backfill when a word has fewer than 3 occurrences, so it has more
 examples next visit. Quota is guarded (search = 100 of ~10k daily units): covered
 words never search, and each lemma is searched at most once (`word_searches`).
 Without `YOUTUBE_API_KEY` everything above no-ops and the app runs normally.
+
+## Translation
+Chinese subtitles come from any endpoint that speaks the Anthropic Messages
+API. It defaults to Anthropic; two environment variables redirect it at another
+provider without touching code:
+```bash
+ANTHROPIC_API_KEY=...                              # required either way
+ANTHROPIC_BASE_URL=https://<gateway>/anthropic     # omit to use Anthropic
+TRANSLATE_MODEL=<that provider's model id>         # or pass --model
+```
+`--effort` is an Anthropic-only parameter and is dropped automatically when
+`ANTHROPIC_BASE_URL` is set, because a gateway that merely speaks the wire
+format will reject the unknown field. `anthropic` is an optional extra
+(`pip install -e ".[llm]"`); without it, and without a key, translation falls
+back to a placeholder and everything else still runs.
 
 ## Web app (client)
 React + Vite + TypeScript SPA (`web/`), consuming the backend REST API (ADR-002).
@@ -197,7 +215,7 @@ both levels and pinned with a regression test.
 - **T04 ✅** Auth: register/login/me with JWT bearer tokens + PBKDF2 password hashing; `get_current_user` dependency for protected routes.
 - **T05 ✅** Content API: `GET /lessons` (theme/difficulty filters), `GET /lessons/{id}` (full package w/ sentences+tokens), `GET /words/{lemma}/occurrences` (reverse lookup).
 - **T06 ✅** Vocab API (auth'd, per-user): `POST/GET/PATCH/DELETE /vocab`; responses embed the source sentence for jump-back. **Phase A backend complete.**
-- **T07 ✅** Content pipeline: `youtube_id` → captions → segment → tokenize/lemmatize → build+validate `LessonPackage` → load to DB. Pluggable providers; placeholder vs. Claude translation. CLI: `python -m app.pipeline.run <id> --title ... --theme ...`.
+- **T07 ✅** Content pipeline: `youtube_id` → captions → segment → tokenize/lemmatize → build+validate `LessonPackage` → load to DB. Pluggable providers; placeholder vs. real LLM translation. CLI: `python -m app.pipeline.run <id> --title ... --theme ...`.
 - **T09 ✅** Dockerized: `backend/Dockerfile` (non-root, migrates on start) + root `docker-compose.yml` (API + Postgres 16, healthcheck-gated). `docker compose up --build` serves the API on a real Postgres. (T08 ingest deferred — needs video curation + a translation key.)
 - **T11 ✅** Web app scaffold (`web/`, React+Vite+TS): routing, typed API client, register/login + authenticated `/auth/me`, protected routes, lesson browse. Verified end-to-end through the dev proxy against the live backend.
 - **T12 ✅** Reader: YouTube IFrame player driven by sentence timestamps (play/pause, prev/next, single-sentence loop, auto-pause, 0.5–1.5× speed), tappable bilingual subtitles with 中英/仅英/仅中/关闭 modes + click-to-jump transcript. Build+lint clean; visual acceptance best with real content (T08).

@@ -37,9 +37,9 @@ def _build_translator():
     NOTE: without ANTHROPIC_API_KEY, auto-ingested videos carry placeholder zh
     text. Acceptable for a dev/demo library; set the key in prod for real content.
     """
-    from app.pipeline.nlp import ClaudeTranslator, PlaceholderTranslator  # noqa: PLC0415
+    from app.pipeline.nlp import LLMTranslator, PlaceholderTranslator  # noqa: PLC0415
 
-    return ClaudeTranslator() if os.getenv("ANTHROPIC_API_KEY") else PlaceholderTranslator()
+    return LLMTranslator() if os.getenv("ANTHROPIC_API_KEY") else PlaceholderTranslator()
 
 
 def _run_backfill(lemma: str) -> None:

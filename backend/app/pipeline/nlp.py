@@ -7,6 +7,7 @@ can drop in behind `tokenize`/`lemmatize` later without touching the pipeline.
 
 from __future__ import annotations
 
+import os
 import re
 from typing import Protocol
 
@@ -85,11 +86,17 @@ class TranslationRefused(Exception):
     transport error: retrying the same text will be declined the same way."""
 
 
-class ClaudeTranslator:
-    """Real translation via the Anthropic API (needs ANTHROPIC_API_KEY).
+class LLMTranslator:
+    """Translation via any endpoint that speaks the Anthropic Messages API.
 
-    Imported lazily; `anthropic` is an optional extra (`pip install -e ".[llm]"`)
-    so the pipeline stays dependency-light. Enable with `--translate claude`.
+    Defaults to Anthropic itself. Point `ANTHROPIC_BASE_URL` at a compatible
+    gateway (DeepSeek's Anthropic endpoint, an aggregator) and set
+    `TRANSLATE_MODEL` to that provider's model id to use it instead — the SDK
+    reads the base URL from the environment on its own, so only the model name
+    and one env var change.
+
+    `anthropic` is an optional extra (`pip install -e ".[llm]"`) and imported
+    lazily, so the pipeline stays dependency-light. Enable with `--translate llm`.
 
     Subtitles are translated in numbered batches rather than one call per line:
     a line of dialogue out of context is often untranslatable ("Get out." is a
@@ -97,23 +104,31 @@ class ClaudeTranslator:
     the call count proportional to lessons rather than sentences.
     """
 
-    def __init__(self, model: str = "claude-opus-5", effort: str = "medium"):
-        self.model = model
+    DEFAULT_MODEL = "claude-opus-5"
+
+    def __init__(self, model: str | None = None, effort: str = "medium"):
+        self.model = model or os.getenv("TRANSLATE_MODEL") or self.DEFAULT_MODEL
         self.effort = effort
 
     def translate(self, texts: list[str]) -> list[str]:
-        import os  # noqa: PLC0415
-
         from anthropic import Anthropic  # noqa: PLC0415
 
         client = Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
         joined = "\n".join(f"{i}. {t}" for i, t in enumerate(texts))
+
+        extra: dict = {}
+        if not os.getenv("ANTHROPIC_BASE_URL"):
+            # `effort` is an Anthropic-only parameter. A third-party gateway
+            # that merely speaks the Messages wire format will usually 400 on
+            # an unknown field, so only send it when talking to Anthropic.
+            extra["output_config"] = {"effort": self.effort}
+
         msg = client.messages.create(
             model=self.model,
-            # Thinking is on by default on this model and shares the budget with
-            # the response, so leave real headroom or long batches truncate.
+            # On Anthropic's current models thinking is on by default and shares
+            # this budget with the response, so leave real headroom or long
+            # batches truncate mid-answer.
             max_tokens=8000,
-            output_config={"effort": self.effort},
             messages=[
                 {
                     "role": "user",
@@ -124,12 +139,14 @@ class ClaudeTranslator:
                     ),
                 }
             ],
+            **extra,
         )
         if msg.stop_reason == "refusal":
             # A 200 with no usable content. Say so rather than crashing on an
-            # empty content list two lines down.
+            # empty content list two lines down. Providers that never emit this
+            # stop reason simply never take the branch.
             raise TranslationRefused(
-                getattr(msg.stop_details, "category", None) or "unspecified"
+                getattr(getattr(msg, "stop_details", None), "category", None) or "unspecified"
             )
         text = "".join(b.text for b in msg.content if b.type == "text")
         out = text.strip().splitlines()
