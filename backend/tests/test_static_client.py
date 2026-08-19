@@ -4,16 +4,36 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.config import settings
+from app.db.session import get_session
 from app.main import create_app
 
 
 @pytest.fixture
-def spa(tmp_path, monkeypatch):
+def spa(tmp_path, monkeypatch, session_factory):
+    """A client for an app that serves the built SPA.
+
+    This builds its own app, so conftest's `client` fixture overrides don't
+    reach it — the session override has to be repeated here. Without it the app
+    talks to whatever DATABASE_URL points at, which on a developer's machine is
+    a populated dev.db and on a clean checkout is an empty file with no tables.
+    That difference is exactly what made this file pass locally and fail in CI.
+    """
     (tmp_path / "assets").mkdir()
     (tmp_path / "assets" / "app.js").write_text("console.log(1)", encoding="utf-8")
     (tmp_path / "index.html").write_text("<!doctype html><title>VidLingo</title>", encoding="utf-8")
     monkeypatch.setattr(settings, "static_dir", str(tmp_path))
-    with TestClient(create_app()) as c:
+
+    app = create_app()
+
+    def _override():
+        s = session_factory()
+        try:
+            yield s
+        finally:
+            s.close()
+
+    app.dependency_overrides[get_session] = _override
+    with TestClient(app) as c:
         yield c
 
 

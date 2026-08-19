@@ -1,13 +1,23 @@
-import pytest
-from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
-from sqlalchemy.pool import StaticPool
+import os
 
-from app.db import models  # noqa: F401  (register tables)
-from app.db.base import Base
-from app.db.session import get_session
-from app.main import app
+# Before any app module reads it: tests must never reach a real database file.
+# A test that forgets the session fixtures would otherwise use whatever
+# DATABASE_URL points at — a populated dev.db on a developer's machine, an
+# empty file on a clean checkout — and pass locally while failing in CI.
+# Pointing it at a throwaway in-memory URL turns that into an immediate,
+# obvious "no such table" instead of a difference between two machines.
+os.environ["DATABASE_URL"] = "sqlite://"
+
+import pytest  # noqa: E402
+from fastapi.testclient import TestClient  # noqa: E402
+from sqlalchemy import create_engine  # noqa: E402
+from sqlalchemy.orm import Session, sessionmaker  # noqa: E402
+from sqlalchemy.pool import StaticPool  # noqa: E402
+
+from app.db import models  # noqa: F401, E402  (register tables)
+from app.db.base import Base  # noqa: E402
+from app.db.session import get_session  # noqa: E402
+from app.main import app  # noqa: E402
 
 
 @pytest.fixture
