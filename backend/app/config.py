@@ -10,8 +10,23 @@ from __future__ import annotations
 import os
 
 
+def _normalise_db_url(url: str) -> str:
+    """Point a bare `postgresql://` URL at the driver we actually install.
+
+    Every managed Postgres (Neon, Render, Heroku) hands out `postgresql://`,
+    which SQLAlchemy resolves to psycopg2 — a driver this project does not
+    depend on. Rewriting it here means a connection string can be pasted
+    verbatim from the provider's dashboard instead of being hand-edited, which
+    is precisely the step a deploy is most likely to get wrong.
+    """
+    for prefix in ("postgresql://", "postgres://"):
+        if url.startswith(prefix):
+            return "postgresql+psycopg://" + url[len(prefix) :]
+    return url
+
+
 class Settings:
-    database_url: str = os.getenv("DATABASE_URL", "sqlite:///./dev.db")
+    database_url: str = _normalise_db_url(os.getenv("DATABASE_URL", "sqlite:///./dev.db"))
 
     # Auth. SECRET_KEY MUST be set to a strong random value in prod (T10).
     secret_key: str = os.getenv("SECRET_KEY", "dev-insecure-change-me")
