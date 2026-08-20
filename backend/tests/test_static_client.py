@@ -100,3 +100,11 @@ def test_every_api_route_lives_under_the_prefix(spa):
         and p != "/"
     }
     assert not stray, f"routes outside {API_PREFIX}: {sorted(stray)}"
+
+
+def test_a_missing_api_endpoint_never_answers_with_the_app(spa):
+    """A browser typed at a bad endpoint must see the 404, not the SPA. Serving
+    index.html with a 200 there turns a wrong URL into a page that looks fine."""
+    r = spa.get("/api/lessons/nope", headers={"Accept": "text/html"})
+    assert r.status_code == 404
+    assert r.json()["detail"] == "Lesson not found"

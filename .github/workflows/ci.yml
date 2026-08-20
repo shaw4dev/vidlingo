@@ -107,6 +107,14 @@ jobs:
           curl -fsS -H 'Accept: text/html' http://localhost:8000/vocab | grep -qi '<div id="root"'
           curl -fsS -H 'Accept: text/html' http://localhost:8000/reader/yt_x | grep -qi '<div id="root"'
 
+      - name: A missing API endpoint 404s instead of serving the app
+        run: |
+          # The deep-link fallback keys on Accept, so a browser aimed at a bad
+          # endpoint could get index.html with a 200 — a wrong URL that looks
+          # like a working page. /api is excluded from the fallback for that.
+          code=$(curl -s -o /dev/null -w '%{http_code}'             -H 'Accept: text/html' http://localhost:8000/api/lessons/nope)
+          test "$code" = 404 || { echo "expected 404, got $code"; exit 1; }
+
       - name: Logs on failure
         if: failure()
         run: docker logs vidlingo

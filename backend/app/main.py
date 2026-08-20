@@ -36,9 +36,11 @@ def _mount_client(app: FastAPI, static_dir: Path) -> None:
 
     Deep links. `/reader/<id>` is a client route with no file behind it, so
     StaticFiles 404s and a refresh breaks the app. The SPA has to answer every
-    unmatched path with index.html — but only for a browser. Keying that on
-    `Accept: text/html` keeps real API 404s as JSON: fetch() sends `*/*`, which
-    doesn't match, so `GET /lessons/nope` still says "Lesson not found".
+    unmatched path with index.html — but only for a browser, and never for the
+    API. Two conditions, because either alone is wrong: `Accept: text/html`
+    keeps fetch() 404s as JSON (fetch sends `*/*`), and excluding /api keeps a
+    browser typed straight at a bad endpoint from getting the app with a 200,
+    which would hide the mistake behind a page that looks fine.
 
     Mount order. This runs after the routers are registered, so an API path is
     always matched by its route first and never shadowed by the catch-all.
@@ -50,7 +52,8 @@ def _mount_client(app: FastAPI, static_dir: Path) -> None:
     @app.exception_handler(StarletteHTTPException)
     async def spa_fallback(request: Request, exc: StarletteHTTPException):
         wants_html = "text/html" in request.headers.get("accept", "")
-        if exc.status_code == 404 and request.method == "GET" and wants_html:
+        is_api = request.url.path == API_PREFIX or request.url.path.startswith(API_PREFIX + "/")
+        if exc.status_code == 404 and request.method == "GET" and wants_html and not is_api:
             return FileResponse(index)
         return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
 
