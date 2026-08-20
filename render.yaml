@@ -29,13 +29,20 @@ services:
     dockerContext: .
     healthCheckPath: /api/health
     envVars:
-      # postgresql+psycopg://USER:PASSWORD@HOST/DB?sslmode=require
+      # Paste the provider's connection string as given; the driver prefix
+      # is normalised in config.py.
       - key: DATABASE_URL
         sync: false
       - key: SECRET_KEY
         generateValue: true
       # Optional: the Chinese gloss on the word card. Absent -> English senses.
       - key: ANTHROPIC_API_KEY
+        sync: false
+      # Optional: point the Anthropic client at a compatible provider instead.
+      # Set both, or neither, to talk to Anthropic itself.
+      - key: ANTHROPIC_BASE_URL
+        sync: false
+      - key: TRANSLATE_MODEL
         sync: false
       # Optional: on-demand word backfill. Absent -> that feature no-ops.
       - key: YOUTUBE_API_KEY
