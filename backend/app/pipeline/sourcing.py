@@ -153,7 +153,7 @@ class BackfillReport:
 
 def _coverage(session: Session, lemma: str) -> int:
     return session.scalar(
-        select(func.count()).select_from(WordIndex).where(func.lower(WordIndex.lemma) == lemma)
+        select(func.count()).select_from(WordIndex).where(WordIndex.lemma == lemma.lower())
     ) or 0
 
 

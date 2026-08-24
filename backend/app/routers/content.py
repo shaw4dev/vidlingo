@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from app.content.backfill import MIN_COVERAGE, BackfillTrigger, get_backfill_trigger
@@ -174,14 +174,23 @@ def feed(
 def list_lessons(
     theme: str | None = Query(default=None),
     difficulty: str | None = Query(default=None),
+    limit: int = Query(default=100, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_session),
 ) -> list[Lesson]:
+    """The lesson library, newest-agnostic and alphabetical.
+
+    Bounded on purpose. An unbounded list is invisible at 39 lessons and
+    ruinous at thirty thousand — the cost lands on the database, the JSON
+    encoder and the client at once, and it arrives the day the library grows
+    rather than the day the code changes.
+    """
     stmt = select(Lesson)
     if theme:
         stmt = stmt.where(Lesson.theme == theme)
     if difficulty:
         stmt = stmt.where(Lesson.difficulty == difficulty)
-    stmt = stmt.order_by(Lesson.title)
+    stmt = stmt.order_by(Lesson.title, Lesson.id).offset(offset).limit(limit)
     return list(db.scalars(stmt).all())
 
 
@@ -233,9 +242,17 @@ def get_lesson(lesson_id: str, db: Session = Depends(get_session)) -> LessonDeta
 def word_occurrences(
     lemma: str,
     background_tasks: BackgroundTasks,
+    limit: int = Query(default=50, ge=1, le=200),
     db: Session = Depends(get_session),
     trigger: BackfillTrigger = Depends(get_backfill_trigger),
 ) -> OccurrencesResponse:
+    """Every fragment containing `lemma`, capped.
+
+    `count` is the number returned, not the number that exist: the client pages
+    through these one at a time, so a count it cannot index into would break
+    the pager. A common word appears thousands of times and nobody reads past
+    the first few.
+    """
     # Lemmatize the input so tapping any surface form ("running", "goes") resolves
     # to the stored lemma ("run", "go") — the index holds lemmas, not surfaces.
     key = lemmatize(lemma.strip().lower())
@@ -243,8 +260,9 @@ def word_occurrences(
         select(WordIndex, Sentence, Lesson)
         .join(Sentence, WordIndex.sentence_id == Sentence.id)
         .join(Lesson, WordIndex.lesson_id == Lesson.id)
-        .where(func.lower(WordIndex.lemma) == key)
+        .where(WordIndex.lemma == key)  # bare column: uses ix_word_index_lemma
         .order_by(Lesson.title, WordIndex.start_ms)
+        .limit(limit)
     )
     rows = db.execute(stmt).all()
     occurrences = [

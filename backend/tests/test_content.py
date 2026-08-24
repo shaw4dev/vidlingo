@@ -172,3 +172,54 @@ def test_feed_empty_when_no_content(client):
     body = client.get("/api/feed").json()
     assert body["clips"] == []
     assert body["next_offset"] is None
+
+
+# ---- bounded results -------------------------------------------------------
+
+def test_lemmas_are_stored_lowercase_so_the_lookup_can_use_its_index(db, client):
+    """The lookup matches on the bare column — `where(lower(lemma) = ...)` reads
+    identically but cannot use ix_word_index_lemma, so every word tap becomes a
+    full scan. That only stays correct while the write side normalises."""
+    import json
+
+    from app.db.models import Token, WordIndex
+    from app.db.seed import SAMPLE_PACKAGE, load_package
+
+    package = json.loads(SAMPLE_PACKAGE.read_text(encoding="utf-8"))
+    package["video"]["id"] = "vid_shouty_001"
+    for row in package["index"]:
+        row["lemma"] = row["lemma"].upper()
+    for sentence in package["sentences"]:
+        for tok in sentence["tokens"]:
+            tok["lemma"] = tok["lemma"].upper()
+    load_package(db, package)
+    db.commit()
+
+    stored = {w.lemma for w in db.query(WordIndex).all()}
+    assert stored and all(lemma == lemma.lower() for lemma in stored)
+    assert all(t.lemma == t.lemma.lower() for t in db.query(Token).all())
+
+    # and the endpoint still finds them
+    assert client.get("/api/words/go/occurrences").json()["count"] >= 1
+
+
+def test_lesson_list_is_bounded_and_pages(feed_lessons):
+    """An unbounded list is invisible at 39 lessons and ruinous at thirty
+    thousand — the cost arrives with the data, not with a code change."""
+    first = feed_lessons.get("/api/lessons", params={"limit": 1}).json()
+    assert len(first) == 1
+
+    second = feed_lessons.get("/api/lessons", params={"limit": 1, "offset": 1}).json()
+    assert len(second) == 1
+    assert first[0]["id"] != second[0]["id"]  # stable order, no overlap
+
+    assert feed_lessons.get("/api/lessons", params={"limit": 0}).status_code == 422
+    assert feed_lessons.get("/api/lessons", params={"limit": 999}).status_code == 422
+
+
+def test_word_occurrences_are_capped(feed_lessons):
+    """A common word appears everywhere; nobody pages past the first few."""
+    body = feed_lessons.get("/api/words/sentence/occurrences", params={"limit": 2}).json()
+    assert len(body["occurrences"]) == 2
+    # count describes what was returned, because the client indexes into it
+    assert body["count"] == len(body["occurrences"])

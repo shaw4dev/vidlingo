@@ -79,7 +79,12 @@ def load_package(session: Session, package: dict) -> Lesson:
                     char_start=start,
                     char_end=end,
                     surface=t["surface"],
-                    lemma=t["lemma"],
+                    # Lemmas are stored lowercase, always. The lookup queries
+                    # match on the column directly so they can use the index —
+                    # wrapping it in lower() at read time turns every word tap
+                    # into a full table scan. Normalising here is what earns
+                    # that: the invariant is enforced, not assumed.
+                    lemma=t["lemma"].lower(),
                     pos=t.get("pos"),
                     dict_ref=t.get("dict_ref"),
                 )
@@ -91,7 +96,7 @@ def load_package(session: Session, package: dict) -> Lesson:
             continue  # validator already guarantees this won't happen
         session.add(
             WordIndex(
-                lemma=row["lemma"],
+                lemma=row["lemma"].lower(),
                 sentence_id=gid,
                 lesson_id=lesson_id,
                 start_ms=row["start_ms"],
