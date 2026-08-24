@@ -1,8 +1,0 @@
- 1.dockerfile里面的命令是通用的吗？我理解是先写好dockerfile，然后运行这个文件，也就相当于运行npm
-  build,得到镜像文件。如果我们安装docker后，可以直接在powershell里面运行docker的命令吗，还是必须去docker desktop里面？写好dockerfile，我们不需要自己运行，r
-  ender负责运行这个dockerfile，得到的image在render上，所以我只要输入网址就可以访问了。2.为什么说容器是一次性的？是说如果render
-  runtime由于什么原因挂掉重启，那里面的数据都清空了？所以要放在neon上面，neon有自己的容灾机制保证数据的持久性？那这里是怎么和neon建立联系的，没看到任何配置
-  文件？3.新项目的部署，我需要写dockerfile和render.yaml，基本就可以了？目前的镜像文件是github
-  actions和render各跑了一份是吗，无法匹配，所以我应该通过github把镜像文件image推到render上？4.能把项目后端讲一下吗，感觉比以往的.NET简单一些？之前要对每个a
-  pi写controller对应，当前项目更多的是数据的匹配和查询？能具体讲下类是怎么设计的吗，每次都是直接查询数据库然后返回一个对象？当前数据较少还好，如果几万个视
-  频，而且都存成json，那查找是不是很浪费时间？项目中的数据库在backend/app/db吗

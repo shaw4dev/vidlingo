@@ -51,3 +51,7 @@ content/packages/
 *.m4a
 data/
 content/raw/
+
+# Scratch files and exported notes — not part of the project.
+temp.txt
+*.pdf
