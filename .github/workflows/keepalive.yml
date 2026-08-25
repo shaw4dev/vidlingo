@@ -1,0 +1,48 @@
+name: Keep the demo warm
+
+# Render's free instances spin down after about 15 minutes of inactivity and take
+# roughly 30 seconds to answer the next request. Anyone opening the demo link
+# during that window sees a blank page, so this polls the health endpoint often
+# enough that the instance never gets there.
+#
+# Two things silently break this:
+#   - GitHub disables scheduled workflows on a repository with no commits for 60
+#     days. If the demo starts sleeping again, check that first.
+#   - Scheduled runs are queued, not guaranteed on time. Ten minutes is chosen to
+#     leave slack against the fifteen-minute idle timer; if it still sleeps,
+#     tighten the cron to */5.
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: keepalive
+  cancel-in-progress: false
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Ping the health endpoint
+        env:
+          URL: https://vidlingo.onrender.com/api/health
+        run: |
+          # A generous timeout: if the instance did go to sleep, this request is
+          # the one that wakes it, and waking takes about half a minute.
+          for attempt in 1 2 3; do
+            code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 90 "$URL" || echo "000")
+            if [ "$code" = "200" ]; then
+              echo "healthy (attempt $attempt)"
+              exit 0
+            fi
+            echo "attempt $attempt: HTTP $code"
+            sleep 15
+          done
+          echo "::error::$URL did not return 200 after three attempts"
+          exit 1
