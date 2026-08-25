@@ -52,7 +52,12 @@ export function useYouTubePlayer(youtubeId: string | null) {
         videoId: youtubeId,
         playerVars: {
           rel: 0, // related videos, when shown, stay on the same channel
-          modestbranding: 1,
+          // The Reader supplies play/pause, sentence stepping, speed and
+          // looping, so YouTube's bar is duplicate chrome over the frame the
+          // subtitles sit under. The corner watermark stays either way —
+          // YouTube's terms require it and no player var removes it.
+          controls: 0,
+          modestbranding: 1, // no-op since 2023; harmless, and documents intent
           playsinline: 1,
           cc_load_policy: 0, // don't force YouTube's own captions on
           iv_load_policy: 3, // no annotation cards over the video

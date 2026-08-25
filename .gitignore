@@ -55,3 +55,7 @@ content/raw/
 # Scratch files and exported notes — not part of the project.
 temp.txt
 *.pdf
+
+# Job application working files — not part of the project.
+docs/
+*.docx

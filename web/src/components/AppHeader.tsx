@@ -1,6 +1,11 @@
 // One nav for every page, so the four surfaces (library, shorts, vocab, reader)
 // stay reachable from each other instead of dead-ending in a back button.
-import { NavLink } from 'react-router-dom'
+//
+// The right-hand side is the only part that knows whether anyone is signed in.
+// A visitor sees Vocab too — it is part of the product, and hiding it hides the
+// reason to make an account. Following it routes through the login page, which
+// then returns here.
+import { NavLink, Link } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 
 const TABS = [
@@ -10,7 +15,8 @@ const TABS = [
 ]
 
 export function AppHeader() {
-  const { user, logout } = useAuth()
+  const { user, loading } = useAuth()
+
   return (
     <header className="topbar">
       <NavLink to="/" className="brand">
@@ -29,10 +35,21 @@ export function AppHeader() {
         ))}
       </nav>
       <span className="spacer" />
-      {user && <span className="muted small hide-sm">{user.username}</span>}
-      <button className="link" onClick={logout}>
-        Log out
-      </button>
+      {loading ? null : user ? (
+        <NavLink
+          to="/account"
+          className={({ isActive }) => (isActive ? 'account-link active' : 'account-link')}
+        >
+          <span className="avatar" aria-hidden="true">
+            {user.username.slice(0, 1).toUpperCase()}
+          </span>
+          <span className="hide-sm">{user.username}</span>
+        </NavLink>
+      ) : (
+        <Link to="/login" className="btn-small">
+          Log in
+        </Link>
+      )}
     </header>
   )
 }

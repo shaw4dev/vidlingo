@@ -38,6 +38,11 @@ class User(Base):
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
     username: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    # Nullable because accounts predate it (the demo user has none) and because
+    # the column is unique — a shared empty string would collide on the second
+    # row. New registrations require one: it is the only channel through which
+    # an account can ever be recovered.
+    email: Mapped[str | None] = mapped_column(String(254), unique=True, index=True)
     password_hash: Mapped[str | None] = mapped_column(String(255))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

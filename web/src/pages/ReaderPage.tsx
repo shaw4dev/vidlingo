@@ -11,7 +11,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { api, ApiError, type LessonDetail, type Sentence, type TokenSpan } from '../lib/api'
 import { AppHeader } from '../components/AppHeader'
-import { useLessons } from '../features/library/useLessons'
+import { useLessons, thumbnailUrl } from '../features/library/useLessons'
 import { useYouTubePlayer } from '../features/reader/useYouTubePlayer'
 import { TappableSentence } from '../features/reader/TappableSentence'
 import { WordCard } from '../features/word/WordCard'
@@ -99,6 +99,13 @@ function Reader({ lesson, startIdx }: { lesson: LessonDetail; startIdx: number }
   )
   const { prev, next, position } = useLessonNeighbours(lesson.id)
 
+  // The poster comes down when the video is actually *playing*, not when the
+  // button is clicked: between those two moments YouTube is still buffering
+  // and still drawing its unstarted overlay, so removing it on click just
+  // reveals the thing the poster exists to hide. One-way, because once
+  // playback has begun that overlay never returns.
+  const [started, setStarted] = useState(false)
+
   const [activeIdx, setActiveIdx] = useState(() =>
     Number.isInteger(startIdx) && startIdx >= 0 && startIdx < sentences.length ? startIdx : 0,
   )
@@ -131,6 +138,10 @@ function Reader({ lesson, startIdx }: { lesson: LessonDetail; startIdx: number }
     const idx = indexAtMs(sentences, currentMs)
     if (idx !== -1 && idx !== activeIdx) setActiveIdx(idx)
   }, [currentMs, ready, playing, repeat, autoPause, active, activeIdx, sentences, controls])
+
+  useEffect(() => {
+    if (playing) setStarted(true)
+  }, [playing])
 
   // A deep link only knows the index; the seek has to wait for the player.
   const seekedToStart = useRef(false)
@@ -218,7 +229,30 @@ function Reader({ lesson, startIdx }: { lesson: LessonDetail; startIdx: number }
       <div className="reader-grid">
         <div className="reader-main">
           {lesson.youtube_id ? (
-            <div className="player-wrap" ref={wrapRef} />
+            <div className="player-wrap">
+              <div className="player-mount" ref={wrapRef} />
+              {!started && (
+                // Our own poster over YouTube's unstarted state. With the
+                // native control bar off, that state is the frame's loudest
+                // branding: a channel header, a red play button and a "Watch
+                // on YouTube" pill, over subtitles that are the actual lesson.
+                // Covering it until first play is the only lever we have —
+                // the corner watermark during playback is required and stays.
+                <button
+                  type="button"
+                  className="player-poster"
+                  style={{ backgroundImage: `url(${thumbnailUrl(lesson.youtube_id)})` }}
+                  onClick={() => controls.play()}
+                  aria-label={`Play ${lesson.title}`}
+                >
+                  <span className="player-poster-btn" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" width="28" height="28">
+                      <polygon points="8,5 20,12 8,19" fill="currentColor" />
+                    </svg>
+                  </span>
+                </button>
+              )}
+            </div>
           ) : (
             <p className="error">This lesson has no YouTube video.</p>
           )}

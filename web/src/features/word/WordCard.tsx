@@ -5,7 +5,8 @@
 // sentence's own translation, already in the LessonPackage. Two actions:
 // save it to vocab (T06), and jump to other real videos using it (T05/T18).
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
+import { useAuth } from '../../auth/AuthContext'
 import { api, ApiError } from '../../lib/api'
 import { pronounce } from '../../lib/tts'
 import { useDefinition } from './useDefinition'
@@ -32,6 +33,8 @@ export function WordCard({
   onClose?: () => void
 }) {
   const { definition, loading, error } = useDefinition(lemma)
+  const { user, refresh } = useAuth()
+  const location = useLocation()
   const [save, setSave] = useState<SaveState>('idle')
   const [saveError, setSaveError] = useState<string | null>(null)
 
@@ -40,7 +43,10 @@ export function WordCard({
     setSaveError(null)
     api
       .addVocab({ lemma, surface, source_sentence_id: sentenceId })
-      .then(() => setSave('saved'))
+      .then(() => {
+        setSave('saved')
+        void refresh() // keep the account page's counter honest
+      })
       .catch((err) => {
         // Already in her list is a success from her point of view, not an error.
         if (err instanceof ApiError && err.status === 409) {
@@ -110,9 +116,21 @@ export function WordCard({
       )}
 
       <div className="word-card-actions">
-        <button onClick={addToVocab} disabled={save === 'saving' || save === 'saved'}>
-          {save === 'saved' ? '✓ In your vocab' : save === 'saving' ? 'Saving…' : '+ Add to vocab'}
-        </button>
+        {user ? (
+          <button onClick={addToVocab} disabled={save === 'saving' || save === 'saved'}>
+            {save === 'saved' ? '✓ In your vocab' : save === 'saving' ? 'Saving…' : '+ Add to vocab'}
+          </button>
+        ) : (
+          // Not an error state: saving genuinely needs an account, and saying
+          // so up front beats a 401 after the click.
+          <Link
+            className="btn-inline"
+            to="/login"
+            state={{ from: location.pathname + location.search }}
+          >
+            Log in to save
+          </Link>
+        )}
         {showMoreVideos && (
           <Link className="link" to={`/word/${encodeURIComponent(lemma)}`}>
             More videos with this word →

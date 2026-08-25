@@ -16,7 +16,8 @@ interface AuthState {
   user: User | null
   loading: boolean
   login: (username: string, password: string) => Promise<void>
-  register: (username: string, password: string) => Promise<void>
+  register: (username: string, email: string, password: string) => Promise<void>
+  refresh: () => Promise<void>
   logout: () => void
 }
 
@@ -53,12 +54,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   )
 
   const register = useCallback(
-    async (username: string, password: string) => {
-      const { access_token } = await api.register(username, password)
+    async (username: string, email: string, password: string) => {
+      const { access_token } = await api.register(username, email, password)
       await finishAuth(access_token)
     },
     [finishAuth],
   )
+
+  /** Re-read the profile — the saved-word count on the account page goes stale
+   *  the moment she saves a word anywhere else in the app. */
+  const refresh = useCallback(async () => {
+    if (tokenStore.get()) setUser(await api.me())
+  }, [])
 
   const logout = useCallback(() => {
     tokenStore.clear()
@@ -66,8 +73,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const value = useMemo(
-    () => ({ user, loading, login, register, logout }),
-    [user, loading, login, register, logout],
+    () => ({ user, loading, login, register, logout, refresh }),
+    [user, loading, login, register, logout, refresh],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

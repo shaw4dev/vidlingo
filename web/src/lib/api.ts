@@ -57,7 +57,11 @@ export interface TokenResponse {
 export interface User {
   id: string
   username: string
+  /** Null only for accounts created before registration collected one. */
+  email: string | null
   created_at: string
+  /** How many words this account has saved — the account page's one number. */
+  vocab_count: number
 }
 
 export interface LessonSummary {
@@ -171,10 +175,10 @@ export interface VocabItem {
 
 export const api = {
   // auth (T04)
-  register: (username: string, password: string) =>
+  register: (username: string, email: string, password: string) =>
     request<TokenResponse>('/auth/register', {
       method: 'POST',
-      body: JSON.stringify({ username, password }),
+      body: JSON.stringify({ username, email, password }),
     }),
   login: (username: string, password: string) =>
     request<TokenResponse>('/auth/login', {
@@ -182,12 +186,21 @@ export const api = {
       body: JSON.stringify({ username, password }),
     }),
   me: () => request<User>('/auth/me'),
+  changePassword: (currentPassword: string, newPassword: string) =>
+    request<void>('/auth/password', {
+      method: 'POST',
+      body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+    }),
 
   // content (T05)
-  listLessons: (params: { theme?: string; difficulty?: string } = {}) => {
+  listLessons: (
+    params: { theme?: string; difficulty?: string; limit?: number; offset?: number } = {},
+  ) => {
     const q = new URLSearchParams()
     if (params.theme) q.set('theme', params.theme)
     if (params.difficulty) q.set('difficulty', params.difficulty)
+    if (params.limit != null) q.set('limit', String(params.limit))
+    if (params.offset != null) q.set('offset', String(params.offset))
     const qs = q.toString()
     return request<LessonSummary[]>(`/lessons${qs ? `?${qs}` : ''}`)
   },

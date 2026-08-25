@@ -4,7 +4,14 @@ from app.db.seed import seed_initial
 
 
 def _auth(client, username="alice", password="secret123"):
-    client.post("/api/auth/register", json={"username": username, "password": password})
+    client.post(
+        "/api/auth/register",
+        json={
+            "username": username,
+            "email": f"{username}@example.com",
+            "password": password,
+        },
+    )
     token = client.post(
         "/api/auth/login", json={"username": username, "password": password}
     ).json()["access_token"]
