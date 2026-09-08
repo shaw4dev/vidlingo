@@ -14,7 +14,14 @@ def make_engine(url: str | None = None):
     url = url or settings.database_url
     # SQLite needs this when used across FastAPI's threadpool.
     connect_args = {"check_same_thread": False} if url.startswith("sqlite") else {}
-    engine = create_engine(url, future=True, connect_args=connect_args)
+    # Neon suspends its compute after a few minutes idle and drops every
+    # connection with it. The pool cannot tell, so it hands out a dead socket
+    # and the request 500s -- intermittently, and only after quiet periods,
+    # which is the worst shape a bug can have. pre_ping spends one round trip
+    # per checkout to find out; recycle retires connections before an idle
+    # timeout can. Neither applies to SQLite, which has no server to lose.
+    pool_args = {} if url.startswith("sqlite") else {"pool_pre_ping": True, "pool_recycle": 300}
+    engine = create_engine(url, future=True, connect_args=connect_args, **pool_args)
 
     if url.startswith("sqlite"):
         # SQLite ignores foreign keys unless asked, per connection. Without this
