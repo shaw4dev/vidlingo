@@ -59,3 +59,7 @@ temp.txt
 # Job application working files — not part of the project.
 docs/
 *.docx
+
+# Local nginx build used to rehearse the reverse proxy config before it went
+# to the VPS. A downloaded Windows binary distribution, not project source.
+nginx-*/
