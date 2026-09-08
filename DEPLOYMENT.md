@@ -360,7 +360,7 @@ two months.
 
 ---
 
-## 11. Security response headers — **not yet applied**
+## 11. Security response headers
 
 TLS protects data in transit. It says nothing about what the browser is allowed
 to do once the page has loaded. That is what these are for:
@@ -395,9 +395,26 @@ in `Report-Only` mode at the time, which is precisely what that mode is for.
 `location` block silently discards *every* server-level header. The `always`
 flag is separately required, or none of them apply to error responses.
 
-**Current status: the block above is written but not live.** `curl -D -` against
-`https://vidlingo.dev/` returns none of these headers. Applying it is one edit
-plus `nginx -t && sudo systemctl reload nginx`.
+**And a third: `nginx -t` does not tell you what is running.** The headers were
+written into the config and then appeared to do nothing — no HSTS, no CSP, no
+`nosniff` in the response, while `nginx -t` reported the config valid. The
+config *file* was valid; the running process had never read it. Comparing two
+timestamps found it:
+
+```
+nginx worker started:  Sep  8 06:09:06     <- last reload
+config file mtime:     Sep  8 06:45:42     <- the edit
+```
+
+The edit was 36 minutes newer than the process using it. `nginx -t` validates
+what is on disk; only `systemctl reload nginx` makes it live. **A config change
+is not applied until the workers restart** — which is what the worker start time
+is for.
+
+Verified in a browser after enforcing, not just with `curl`: a CSP violation is
+only observable where the policy is enforced. Library thumbnails
+(`i.ytimg.com`), the Reader's player (`iframe_api` script + the iframe itself),
+and the word card all work, with an empty console.
 
 ---
 
@@ -471,7 +488,6 @@ Both deployments point at the same Neon database, so this ran once.
 
 ## 15. Open items
 
-- [ ] Apply the security headers from §11 and reload nginx
 - [ ] Confirm domain auto-renewal is enabled in Cloudflare — an expired domain is
       the one failure here that arrives with no warning and no alert
 - [ ] Automate the client build and upload instead of `scp` by hand
