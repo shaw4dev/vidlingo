@@ -305,10 +305,27 @@ Design points:
 
 ## 12. Deployment & Environments
 
-- **MVP**: single small cloud VM or a container platform running the modular monolith + managed Postgres + object storage + CDN. Keep ops trivial; spend complexity budget on ML, not Kubernetes.
+*As built. The full runbook — every command and what it means — is in [`DEPLOYMENT.md`](DEPLOYMENT.md).*
+
+The MVP runs in **two places on deliberately different stacks**, against one shared managed Postgres (Neon):
+
+| | Render | AWS Lightsail |
+|---|---|---|
+| Model | PaaS: builds and runs the `Dockerfile` | VPS: bare Ubuntu, self-managed |
+| Runtime | the container | venv under systemd |
+| Ingress | platform-terminated TLS | nginx reverse proxy + certbot |
+| Deploy | automatic on push to `main` | manual `git pull` + `systemctl restart` |
+
+This is not redundancy — a single database means neither is a failover for the other. The container proves the artifact is portable; the VPS proves the stack is understood rather than delegated. The delta between the two columns *is* the value of a platform, made concrete.
+
+- **One process, one origin.** The API and the built client are served by the same FastAPI process in both environments, so the browser never makes a cross-origin request and CORS never applies (ADR-002). Keeping the arrangement identical on the VPS is deliberate: two environments serving files by different mechanisms produce bugs that reproduce in exactly one of them.
+- **Database is external by design.** Render deletes free Postgres after 30 days, so `DATABASE_URL` points at a managed provider — one environment variable to switch. Serverless Postgres suspends when idle, which the connection pool must be told about (`pool_pre_ping`); see `backend/app/db/session.py`.
+- **Corpus moves out of band**, as validated `LessonPackage` JSON, because re-running ingest against a fresh database would re-fetch every caption against an IP-rate-limited endpoint.
 - **Content pipeline**: runs as scheduled batch jobs (can start as scripts/cron, graduate to a workflow orchestrator when the DAG grows).
 - **ML serving**: lives inside the monolith until it needs independent scaling, then carved out as `ml-serving`.
-- **CI**: lint + tests + a content-package schema validation step (a broken package must never reach an offline client).
+- **CI**: lint + tests + a content-package schema validation step (a broken package must never reach an offline client), plus building the image and smoke-testing the running container — "it builds" is not the same as "it answers".
+
+Deliberately **not** here: Kubernetes, autoscaling, a load balancer, object storage or a CDN. One process on one machine is the correct size for the current load, and the complexity budget belongs to the content pipeline and the ML work instead.
 
 ---
 

@@ -26,7 +26,14 @@ Three things shaped the engineering more than the feature list did:
 **Status:** functional end to end against a live library of 39 ingested videos
 (Friends, The Office, TED, late-night). It ships as a single Docker image
 containing both halves, so `docker compose up` gives you the whole app on
-Postgres. Hosted demo pending. Design docs: [`PRD_v1.md`](PRD_v1.md),
+Postgres.
+
+**Live:** [vidlingo.dev](https://vidlingo.dev) on a self-managed AWS Lightsail
+VPS, and [vidlingo.onrender.com](https://vidlingo.onrender.com) as a container on
+Render — two deployments on deliberately different stacks, described in
+[`DEPLOYMENT.md`](DEPLOYMENT.md).
+
+Design docs: [`PRD_v1.md`](PRD_v1.md),
 [`architecture.md`](architecture.md), [`tasks.md`](tasks.md).
 
 ## Repo layout
@@ -156,10 +163,17 @@ applies Alembic migrations on start (`backend/docker-entrypoint.sh`); Postgres
 data persists in the `pgdata` volume.
 
 ## Deployment
-`render.yaml` is a Render Blueprint declaring one Docker service. The database
-is deliberately *not* declared there: Render deletes free Postgres instances
-after 30 days, so `DATABASE_URL` points at an external managed Postgres instead
-— one environment variable to change providers.
+The app is deployed twice, on purpose. **[`DEPLOYMENT.md`](DEPLOYMENT.md) is the
+full runbook** — instance, firewall, systemd, nginx, TLS, and what broke.
+
+*Render* — `render.yaml` is a Blueprint declaring one Docker service. The
+database is deliberately *not* declared there: Render deletes free Postgres
+instances after 30 days, so `DATABASE_URL` points at an external managed
+Postgres instead — one environment variable to change providers.
+
+*Lightsail* — the same code with no container: a venv under systemd behind
+nginx, with certbot for TLS. Running both is the point. One shows what a
+platform does for you; the other shows what it was doing.
 
 Moving the library into a fresh database is its own problem: re-running ingest
 there would re-fetch every caption, and YouTube rate-limits that endpoint by IP.
@@ -225,5 +239,5 @@ both levels and pinned with a regression test.
 - **T13 ✅** Word card: tap any word for phonetic, audio, POS + senses, a Chinese gloss and the in-context meaning, plus add-to-vocab and reverse lookup. Definitions come from a free keyless dictionary composed with an optional Claude gloss (no free source has both), cached in `dictionary_entries` — one network call per lemma, ever. Client caches in memory + localStorage, 404s included.
 - **T16 ✅** Feed clips: `clips` table + swappable 30–90s windowing strategy, generated at ingest; `GET /feed` (theme/difficulty filters, offset paging, lesson-interleaving order). `backfill_clips` CLI for pre-existing lessons.
 - **T17 ✅** Content discovery + auto-sourcing: YouTube Data API v3 client with playlist/channel/search sources; `seed_corpus` batch ingest; `backfill_word` ingests only videos whose captions truly contain the lemma; quota guarded by a coverage check + `word_searches` cache. Wired into word lookup as a non-blocking background task; word lookup now lemmatizes its input.
-- **T10 🔨** Deployment: multi-stage image (Node build stage discarded; FastAPI serves the built client with an SPA deep-link fallback), `render.yaml` blueprint, CORS behind an env var, and `app.content.packages` to move the corpus into a fresh database as validated LessonPackages. CI builds the image and smoke-tests the running container. Hosting pending.
+- **T10 ✅** Deployment: multi-stage image (Node build stage discarded; FastAPI serves the built client with an SPA deep-link fallback), `render.yaml` blueprint, CORS behind an env var, and `app.content.packages` to move the corpus into a fresh database as validated LessonPackages. CI builds the image and smoke-tests the running container. Live on two stacks — a Render container and a self-managed Lightsail VPS (venv + systemd + nginx + Let's Encrypt) — see [`DEPLOYMENT.md`](DEPLOYMENT.md).
 - **T18 ✅** Web feed + word detail: `/` is a vertical snap-scroll clip feed (only the visible clip mounts a player, looping its window; thumbnails elsewhere; next page prefetched), every caption word links to `/word/:word`, which browses that lemma's real-video fragments with jump-into-Reader. Old lesson list moved to `/browse`. Build+lint clean.
