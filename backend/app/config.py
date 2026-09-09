@@ -49,5 +49,14 @@ class Settings:
         o.strip() for o in os.getenv("CORS_ORIGINS", "").split(",") if o.strip()
     ]
 
+    # Spaced repetition. The daily cap is what stops a week away from turning
+    # into a wall of 200 cards -- the classic reason people abandon an SRS. The
+    # overflow is not dropped, only deferred: it keeps its older due date and
+    # sorts to the front tomorrow.
+    srs_daily_cap: int = int(os.getenv("SRS_DAILY_CAP", "20"))
+    # Ceiling on the per-request `limit` override, so a client cannot ask for
+    # the entire backlog in one query.
+    srs_max_cap: int = 200
+
 
 settings = Settings()

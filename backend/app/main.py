@@ -26,7 +26,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app import __version__
 from app.config import settings
-from app.routers import auth, content, health, vocab
+from app.routers import auth, content, health, review, vocab
 
 
 def _mount_client(app: FastAPI, static_dir: Path) -> None:
@@ -86,6 +86,7 @@ def create_app() -> FastAPI:
     app.include_router(auth.router, prefix=API_PREFIX)
     app.include_router(content.router, prefix=API_PREFIX)
     app.include_router(vocab.router, prefix=API_PREFIX)
+    app.include_router(review.router, prefix=API_PREFIX)
 
     # Only in the deployed image; absent in dev, where Vite serves the client.
     static_dir = Path(settings.static_dir) if settings.static_dir else None
