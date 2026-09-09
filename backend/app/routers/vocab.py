@@ -17,9 +17,13 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_current_user
 from app.db.models import Lesson, Sentence, User, VocabItem
 from app.db.session import get_session
+from app.srs import sm2
 
 router = APIRouter(prefix="/vocab", tags=["vocab"])
 
+# Kept as a response type and as input validation, but no longer writable:
+# mastery is derived from the review schedule (see `_to_out` and the PATCH
+# handler below).
 Mastery = Literal["new", "learning", "mastered"]
 
 
@@ -30,6 +34,9 @@ class SourceRef(BaseModel):
     youtube_id: str | None
     idx: int
     start_ms: int
+    # end_ms is what lets a caller play exactly this sentence and stop; the
+    # review card needs it, and it is additive for existing clients.
+    end_ms: int
     text_en: str
     text_zh: str
 
@@ -42,6 +49,11 @@ class VocabCreate(BaseModel):
 
 
 class VocabUpdate(BaseModel):
+    # `mastery` stays declared even though it is rejected, and that is on
+    # purpose: Pydantic ignores unknown keys, so deleting the field would make
+    # an old client's {"mastery": "mastered"} return 200 OK and silently do
+    # nothing -- the worst possible failure. Declared and refused, it gets an
+    # error that names the replacement endpoint.
     mastery: Mastery | None = None
     note: str | None = None
 
@@ -50,9 +62,12 @@ class VocabItemOut(BaseModel):
     id: str
     lemma: str
     surface: str | None
-    mastery: str
+    mastery: str            # derived from the schedule below, never stored
     note: str | None
     added_at: datetime
+    due_at: datetime
+    interval_days: int
+    reps: int
     source: SourceRef | None
 
 
@@ -66,16 +81,26 @@ def _to_out(item: VocabItem, sentence: Sentence | None, lesson: Lesson | None) -
             youtube_id=lesson.youtube_id,
             idx=sentence.idx,
             start_ms=sentence.start_ms,
+            end_ms=sentence.end_ms,
             text_en=sentence.text_en,
             text_zh=sentence.text_zh,
         )
+    state = sm2.CardState(
+        interval_days=item.interval_days,
+        ease=item.ease,
+        reps=item.reps,
+        lapses=item.lapses,
+    )
     return VocabItemOut(
         id=item.id,
         lemma=item.lemma,
         surface=item.surface,
-        mastery=item.mastery,
+        mastery=sm2.mastery_for(state),
         note=item.note,
         added_at=item.added_at,
+        due_at=sm2.as_utc(item.due_at),
+        interval_days=item.interval_days,
+        reps=item.reps,
         source=source,
     )
 
@@ -147,7 +172,10 @@ def update_vocab(
 ) -> VocabItemOut:
     item = _get_owned(item_id, current, db)
     if body.mastery is not None:
-        item.mastery = body.mastery
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "mastery is derived from review scheduling; grade the word via POST /review/grade",
+        )
     if body.note is not None:
         item.note = body.note
     db.commit()

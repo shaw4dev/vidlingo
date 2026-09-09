@@ -78,12 +78,40 @@ def test_vocab_is_per_user(seeded):
     assert [i["lemma"] for i in seeded.get("/api/vocab", headers=hb).json()] == ["do"]
 
 
-def test_update_mastery(seeded):
+def test_mastery_is_no_longer_patchable(seeded):
+    """Mastery is derived from the review schedule, so writing it is refused.
+
+    A 400 that names the replacement endpoint, rather than dropping the field
+    and letting an old client get a 200 for a write that did nothing.
+    """
     h = _auth(seeded)
     item = seeded.post("/api/vocab", json={"lemma": "go"}, headers=h).json()
     resp = seeded.patch(f"/api/vocab/{item['id']}", json={"mastery": "mastered"}, headers=h)
+    assert resp.status_code == 400
+    assert "review/grade" in resp.json()["detail"]
+
+    # And it really did not take effect.
+    assert seeded.get("/api/vocab", headers=h).json()[0]["mastery"] == "new"
+
+
+def test_note_is_still_patchable(seeded):
+    """Guard against deleting more of PATCH than intended."""
+    h = _auth(seeded)
+    item = seeded.post("/api/vocab", json={"lemma": "go"}, headers=h).json()
+    resp = seeded.patch(f"/api/vocab/{item['id']}", json={"note": "from S01E03"}, headers=h)
     assert resp.status_code == 200
-    assert resp.json()["mastery"] == "mastered"
+    assert resp.json()["note"] == "from S01E03"
+
+
+def test_a_new_word_is_due_immediately(seeded):
+    """Saved because you didn't know it, so it belongs in today's queue."""
+    h = _auth(seeded)
+    resp = seeded.post("/api/vocab", json={"lemma": "go"}, headers=h)
+    body = resp.json()
+    assert body["mastery"] == "new"
+    assert body["interval_days"] == 0
+    assert body["reps"] == 0
+    assert body["due_at"] is not None
 
 
 def test_invalid_mastery_rejected(seeded):

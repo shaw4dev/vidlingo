@@ -157,6 +157,8 @@ export interface SourceRef {
   youtube_id: string | null
   idx: number
   start_ms: number
+  /** Lets a caller play exactly this sentence and stop at its end. */
+  end_ms: number
   text_en: string
   text_zh: string
 }
@@ -165,9 +167,13 @@ export interface VocabItem {
   id: string
   lemma: string
   surface: string | null
+  /** Derived server-side from the review schedule; not writable. */
   mastery: string
   note: string | null
   added_at: string
+  due_at: string
+  interval_days: number
+  reps: number
   source: SourceRef | null
 }
 
@@ -227,7 +233,9 @@ export const api = {
     source_sentence_id?: string
     note?: string
   }) => request<VocabItem>('/vocab', { method: 'POST', body: JSON.stringify(body) }),
-  updateVocab: (id: string, body: { mastery?: Mastery; note?: string }) =>
+  // No `mastery` here: it is derived from the review schedule, and the API
+  // returns 400 for an attempt to set it. Grading goes through /review/grade.
+  updateVocab: (id: string, body: { note?: string }) =>
     request<VocabItem>(`/vocab/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   deleteVocab: (id: string) => request<void>(`/vocab/${id}`, { method: 'DELETE' }),
 }

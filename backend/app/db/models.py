@@ -4,6 +4,7 @@ Key relationships:
     Lesson 1--* Sentence 1--* Token
     WordIndex: lemma -> (sentence, lesson, start_ms)  -> powers reverse lookup (T05/T16)
     User 1--* VocabItem -> source Sentence
+    VocabItem 1--* ReviewLog  -> spaced repetition state + its audit trail (T19)
 
 IDs: lessons keep their package id (e.g. "vid_smalltalk_001"); sentences use a
 global id "<lesson_id>:<local_id>" so per-package ids ("s1") never collide across
@@ -18,6 +19,7 @@ from uuid import uuid4
 from sqlalchemy import (
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -27,6 +29,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
+from app.srs import sm2  # scheduling constants; sm2 imports nothing from app
 
 
 def _uuid() -> str:
@@ -197,8 +200,28 @@ class DictionaryEntry(Base):
 
 
 class VocabItem(Base):
+    """A word one user saved, plus where its review schedule currently stands.
+
+    The scheduling columns are the live state; `review_log` is the history that
+    produced them. State could be replayed from the log, but the queue query
+    runs on every request, so it is kept materialised here and the log is kept
+    for audit and for training.
+
+    There is deliberately no `mastery` column. It used to be a free string the
+    client PATCHed at will, which left no authoritative answer to "does this
+    user know this word". It is now derived from `interval_days`/`reps` by
+    `app.srs.sm2.mastery_for`, so there is exactly one source of truth.
+    """
+
     __tablename__ = "vocab_items"
-    __table_args__ = (UniqueConstraint("user_id", "lemma"),)
+    __table_args__ = (
+        UniqueConstraint("user_id", "lemma"),
+        # The review queue is this index and nothing else: no queue table, just
+        # `WHERE user_id = ? AND due_at <= now() ORDER BY due_at LIMIT n`.
+        # Materialising a queue would only add ways for it to disagree with the
+        # schedule.
+        Index("ix_vocab_items_user_due", "user_id", "due_at"),
+    )
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
@@ -207,8 +230,100 @@ class VocabItem(Base):
     source_sentence_id: Mapped[str | None] = mapped_column(
         ForeignKey("sentences.id", ondelete="SET NULL")
     )
-    mastery: Mapped[str] = mapped_column(String(16), default="new")
     note: Mapped[str | None] = mapped_column(Text)
     added_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
+    # --- spaced repetition state (app/srs/sm2.py) ---------------------------
+    # A newly saved word is due immediately: it was saved because the user
+    # didn't know it. `server_default` as well as a Python default, so a raw
+    # INSERT outside the ORM cannot leave the queue key NULL.
+    due_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), default=func.now()
+    )
+    interval_days: Mapped[int] = mapped_column(Integer, server_default="0", default=0)
+    # SM-2's ease factor x100 (250 == EF 2.50). Integer, not float, so the
+    # arithmetic is bit-identical on SQLite and Postgres -- see sm2.py.
+    ease: Mapped[int] = mapped_column(
+        Integer, server_default=str(sm2.DEFAULT_EASE), default=sm2.DEFAULT_EASE
+    )
+    reps: Mapped[int] = mapped_column(Integer, server_default="0", default=0)
+    # Lifetime lapse count. Not read by SM-2; kept because "how often was this
+    # forgotten" is the strongest single feature for the difficulty model in
+    # architecture.md §7, and it cannot be reconstructed once lost.
+    lapses: Mapped[int] = mapped_column(Integer, server_default="0", default=0)
+    last_reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
     user: Mapped[User] = relationship(back_populates="vocab_items")
+
+
+class ReviewLog(Base):
+    """One grading, recorded once and never touched again.
+
+    Append-only: the app never UPDATEs or DELETEs a row here. Two jobs:
+
+    1. Idempotency. A retried submission (flaky network, impatient tap) must
+       not advance the schedule twice, so the client mints an id per card and
+       the unique constraint below makes a double-apply impossible.
+    2. Training data. Each row is a (what we predicted, what happened) pair —
+       the state before, the answer, and the state it produced. That is the
+       supervision signal for the difficulty model in architecture.md §7, and
+       the reason to record FSRS's headline feature now rather than later:
+       `reviewed_at - due_at` is how overdue the card was when answered.
+
+    Storing both sides means a row is interpretable on its own, with no join
+    and no replay from the beginning of time.
+    """
+
+    __tablename__ = "review_log"
+    __table_args__ = (
+        # The idempotency guarantee. Scoped per user so two clients cannot
+        # collide, however they generate ids.
+        UniqueConstraint("user_id", "client_event_id"),
+        # "How many did I do today" on every queue request.
+        Index("ix_review_log_user_reviewed", "user_id", "reviewed_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    client_event_id: Mapped[str] = mapped_column(String(64))
+
+    # SET NULL, not CASCADE, and so nullable: deleting a word must not destroy
+    # the evidence of having studied it. A log a user action can retroactively
+    # rewrite is not a log.
+    vocab_item_id: Mapped[str | None] = mapped_column(
+        ForeignKey("vocab_items.id", ondelete="SET NULL"), index=True
+    )
+    # Denormalised so the row still says which word it was after the FK above
+    # goes NULL.
+    lemma: Mapped[str] = mapped_column(String(64))
+
+    # Both the button pressed and the number fed to SM-2. If the mapping ever
+    # changes, old rows still record what the user actually chose.
+    grade: Mapped[str] = mapped_column(String(16))
+    quality: Mapped[int] = mapped_column(Integer)
+
+    interval_before: Mapped[int] = mapped_column(Integer)
+    ease_before: Mapped[int] = mapped_column(Integer)
+    reps_before: Mapped[int] = mapped_column(Integer)
+    interval_after: Mapped[int] = mapped_column(Integer)
+    ease_after: Mapped[int] = mapped_column(Integer)
+    reps_after: Mapped[int] = mapped_column(Integer)
+    lapses_after: Mapped[int] = mapped_column(Integer)
+
+    # When it was scheduled for vs. when it was actually answered. The gap is
+    # the overdue-ness feature; nullable only for defensive robustness.
+    due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    reviewed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    # Stored so an idempotent replay can answer from the log without
+    # recomputing the schedule.
+    next_due_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+    # Time from the card front appearing to the button press. Hesitating before
+    # "remembered" is not the same as answering instantly. Nullable: a reload
+    # loses the start time.
+    latency_ms: Mapped[int | None] = mapped_column(Integer)
+    # The offset the client claimed, so "which local day was this?" stays
+    # reconstructible offline and a wrong clock is auditable rather than silent.
+    tz_offset_minutes: Mapped[int] = mapped_column(Integer, server_default="0", default=0)

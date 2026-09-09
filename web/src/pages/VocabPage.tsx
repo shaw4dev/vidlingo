@@ -9,7 +9,9 @@ import { Link } from 'react-router-dom'
 import { AppHeader } from '../components/AppHeader'
 import { api, ApiError, type Mastery, type VocabItem } from '../lib/api'
 
-const MASTERY_CYCLE: Mastery[] = ['new', 'learning', 'mastered']
+// The order the filter chips appear in, weakest first. It used to double as a
+// click-cycle for the pill; nothing cycles now, so the name says what is left.
+const MASTERY_ORDER: Mastery[] = ['new', 'learning', 'mastered']
 const MASTERY_LABELS: Record<Mastery, string> = {
   new: 'New',
   learning: 'Learning',
@@ -41,22 +43,6 @@ export function VocabPage() {
     [items, filter],
   )
 
-  // Optimistic: the row updates immediately and rolls back if the API refuses.
-  const cycleMastery = (item: VocabItem) => {
-    const at = MASTERY_CYCLE.indexOf(item.mastery as Mastery)
-    const next = MASTERY_CYCLE[(at + 1) % MASTERY_CYCLE.length]
-    const before = item.mastery
-    setItems((prev) =>
-      (prev ?? []).map((it) => (it.id === item.id ? { ...it, mastery: next } : it)),
-    )
-    api.updateVocab(item.id, { mastery: next }).catch(() => {
-      setItems((prev) =>
-        (prev ?? []).map((it) => (it.id === item.id ? { ...it, mastery: before } : it)),
-      )
-      setError('Could not save that change')
-    })
-  }
-
   const remove = (item: VocabItem) => {
     const snapshot = items
     setItems((prev) => (prev ?? []).filter((it) => it.id !== item.id))
@@ -80,7 +66,7 @@ export function VocabPage() {
           >
             All {items.length}
           </button>
-          {MASTERY_CYCLE.map((m) => (
+          {MASTERY_ORDER.map((m) => (
             <button
               key={m}
               className={filter === m ? 'filter-chip on' : 'filter-chip'}
@@ -114,13 +100,13 @@ export function VocabPage() {
                 <span className="muted small"> · seen as “{item.surface}”</span>
               )}
               <span className="spacer" />
-              <button
-                className={`mastery mastery-${item.mastery}`}
-                onClick={() => cycleMastery(item)}
-                title="Click to change"
-              >
+              {/* Read-only. This used to cycle new -> learning -> mastered on
+                  click, which meant the label said whatever was last tapped.
+                  It is now derived from the review schedule, so it moves
+                  because the answers moved it. */}
+              <span className={`mastery mastery-${item.mastery}`}>
                 {MASTERY_LABELS[item.mastery as Mastery] ?? item.mastery}
-              </button>
+              </span>
               <button className="icon-btn" aria-label="Remove" onClick={() => remove(item)}>
                 ✕
               </button>
