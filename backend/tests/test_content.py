@@ -141,6 +141,18 @@ def test_feed_returns_clips_with_playback_fields(seeded):
     assert clip["text_en"]
 
 
+def test_feed_clips_carry_exactly_their_own_lines(feed_lessons):
+    """The caption shows one line at a time, so each clip needs its window's
+    sentences — all of them, in order, and none from outside the window."""
+    body = feed_lessons.get("/api/feed").json()
+    for clip in body["clips"]:
+        lines = clip["sentences"]
+        assert lines, clip["clip_id"]
+        assert [s["idx"] for s in lines] == sorted(s["idx"] for s in lines)
+        assert all(clip["start_ms"] <= s["start_ms"] < clip["end_ms"] for s in lines)
+        assert all(s["text_zh"] and "tokens" in s for s in lines)
+
+
 def test_feed_interleaves_lessons(feed_lessons):
     # Each 200s lesson yields 3 clips (start_idx 0, 2, 4); ordering by start_idx
     # interleaves lessons, so the first two feed items are different lessons.

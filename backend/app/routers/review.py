@@ -46,11 +46,24 @@ TZ_OFFSET = Query(default=0, ge=-720, le=840)
 
 CardKind = Literal["cloze", "zh_prompt", "bare"]
 
+# Below this, a sentence is too thin to host a cloze: punch out the target word
+# and what remains does not determine an answer. "I ___ you" admits love, told,
+# owe, miss, heard... so a learner who knows the word perfectly still cannot
+# answer, and the 忘了 they press is noise in the schedule. 27% of the corpus
+# is under this line, and the shortest sentences are a single word, where the
+# blank *is* the whole sentence.
+MIN_CLOZE_WORDS = 5
+
 
 class ReviewSource(SourceRef):
-    """The source sentence, plus where to punch holes in it."""
+    """The sentence the card is built on, plus where to punch holes in it."""
 
     blank_spans: list[tuple[int, int]]
+    # True when this is not the line the word was saved from -- either it was
+    # saved without one, or the original was too short to make a question. The
+    # client says so, because "I don't remember meeting this word here" is
+    # otherwise a confusing thing to hit mid-review.
+    borrowed: bool
 
 
 class ReviewDefinition(BaseModel):
@@ -179,6 +192,10 @@ def _blank_spans(text_en: str, lemma: str, surface: str | None, tokens: list[Tok
     return sorted(set(spans))
 
 
+def _word_count(text: str) -> int:
+    return len(text.split())
+
+
 def _build_cards(
     rows: list[tuple[VocabItem, Sentence | None, Lesson | None]],
     db: Session,
@@ -186,29 +203,48 @@ def _build_cards(
     """Turn the queue rows into cards using three batched lookups, not N+1."""
     items = [item for item, _, _ in rows]
 
-    # A word saved from the word-detail page has no source sentence. Borrow one
-    # from the reverse index -- the asset that already exists for exactly this
-    # question, "where else was this word said?".
-    orphan_lemmas = {i.lemma for i, s, _ in rows if s is None}
-    borrowed: dict[str, tuple[Sentence, Lesson]] = {}
-    if orphan_lemmas:
+    # Two problems, one answer: a word saved from the word-detail page has no
+    # sentence at all, and a word met in "Okay." has one too short to build a
+    # question from. Both are solved by the reverse index -- the asset that
+    # exists for exactly this question, "where else was this word said?".
+    wanting = {
+        item.lemma
+        for item, sentence, _ in rows
+        if sentence is None or _word_count(sentence.text_en) < MIN_CLOZE_WORDS
+    }
+    substitutes: dict[str, tuple[Sentence, Lesson]] = {}
+    if wanting:
         stmt = (
             select(WordIndex.lemma, Sentence, Lesson)
             .join(Sentence, WordIndex.sentence_id == Sentence.id)
             .join(Lesson, WordIndex.lesson_id == Lesson.id)
-            .where(WordIndex.lemma.in_(orphan_lemmas))
+            .where(WordIndex.lemma.in_(wanting))
+            # Longest sentence wins; start_ms breaks ties so the same word
+            # always draws the same example rather than shuffling between
+            # sessions, which would read as a bug.
             .order_by(WordIndex.lemma, WordIndex.start_ms)
         )
         for lemma, sentence, lesson in db.execute(stmt).all():
-            borrowed.setdefault(lemma, (sentence, lesson))
+            best = substitutes.get(lemma)
+            if best is None or _word_count(sentence.text_en) > _word_count(best[0].text_en):
+                substitutes[lemma] = (sentence, lesson)
 
-    resolved: list[tuple[VocabItem, Sentence | None, Lesson | None]] = []
+    resolved: list[tuple[VocabItem, Sentence | None, Lesson | None, bool]] = []
     for item, sentence, lesson in rows:
-        if sentence is None and item.lemma in borrowed:
-            sentence, lesson = borrowed[item.lemma]
-        resolved.append((item, sentence, lesson))
+        borrowed = False
+        candidate = substitutes.get(item.lemma)
+        if candidate is not None:
+            words = _word_count(candidate[0].text_en)
+            original = _word_count(sentence.text_en) if sentence is not None else 0
+            # Only swap for something genuinely better. Substituting a decent
+            # sentence would throw away the hook that makes this app different:
+            # this is the scene *you* met the word in.
+            if words >= MIN_CLOZE_WORDS and words > original:
+                sentence, lesson = candidate
+                borrowed = True
+        resolved.append((item, sentence, lesson, borrowed))
 
-    sentence_ids = {s.id for _, s, _ in resolved if s is not None}
+    sentence_ids = {s.id for _, s, _, _ in resolved if s is not None}
     tokens_by_sentence: dict[str, list[Token]] = defaultdict(list)
     if sentence_ids:
         for tok in db.scalars(select(Token).where(Token.sentence_id.in_(sentence_ids))):
@@ -224,18 +260,20 @@ def _build_cards(
             definitions[entry.lemma] = entry
 
     cards: list[ReviewCardOut] = []
-    for item, sentence, lesson in resolved:
+    for item, sentence, lesson, borrowed in resolved:
         source = None
         kind: CardKind = "bare"
         if sentence is not None and lesson is not None:
             spans = _blank_spans(
                 sentence.text_en, item.lemma, item.surface, tokens_by_sentence[sentence.id]
             )
-            # No hole to punch means the English line is the answer, so the
-            # front shows the translation instead. That loses the cloze but
-            # keeps the clip and the zh->en direction: a harder card, not a
-            # broken one.
-            kind = "cloze" if spans else "zh_prompt"
+            # A cloze needs a hole to punch and enough sentence left around it
+            # to determine the answer. Failing either, the front shows the
+            # Chinese line alone and asks for the English: for a sentence this
+            # short the translation *is* the whole question ("好吧。" -> Okay),
+            # and a blank standing in for the entire sentence would add nothing.
+            usable = spans and _word_count(sentence.text_en) >= MIN_CLOZE_WORDS
+            kind = "cloze" if usable else "zh_prompt"
             source = ReviewSource(
                 sentence_id=sentence.id,
                 lesson_id=lesson.id,
@@ -246,7 +284,8 @@ def _build_cards(
                 end_ms=sentence.end_ms,
                 text_en=sentence.text_en,
                 text_zh=sentence.text_zh,
-                blank_spans=spans,
+                blank_spans=spans if usable else [],
+                borrowed=borrowed,
             )
 
         entry = definitions.get(item.lemma)

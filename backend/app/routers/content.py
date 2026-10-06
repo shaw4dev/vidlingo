@@ -108,12 +108,18 @@ class FeedClip(BaseModel):
     lesson_id: str
     youtube_id: str | None
     title: str
+    source: str | None
     theme: str
     difficulty: str
     start_ms: int
     end_ms: int
     duration_ms: int
     text_en: str
+    # The window's own lines, so the client can show one caption at a time in
+    # step with the video — with its translation and tappable tokens — instead
+    # of `text_en`, which is ninety seconds of speech run together into a
+    # paragraph nobody reads while the video is playing.
+    sentences: list[SentenceOut]
 
 
 class FeedResponse(BaseModel):
@@ -152,18 +158,37 @@ def feed(
     has_more = len(rows) > limit
     rows = rows[:limit]
 
+    # One query for every clip's lines on the page, not one per clip.
+    by_lesson: dict[str, list[Sentence]] = {}
+    lesson_ids = {clip.lesson_id for clip, _ in rows}
+    if lesson_ids:
+        sentences = db.scalars(
+            select(Sentence)
+            .where(Sentence.lesson_id.in_(lesson_ids))
+            .options(selectinload(Sentence.tokens))
+            .order_by(Sentence.lesson_id, Sentence.idx)
+        ).all()
+        for s in sentences:
+            by_lesson.setdefault(s.lesson_id, []).append(s)
+
     clips = [
         FeedClip(
             clip_id=clip.id,
             lesson_id=lesson.id,
             youtube_id=lesson.youtube_id,
             title=lesson.title,
+            source=lesson.source,
             theme=lesson.theme,
             difficulty=clip.difficulty,
             start_ms=clip.start_ms,
             end_ms=clip.end_ms,
             duration_ms=clip.duration_ms,
             text_en=clip.text_en,
+            sentences=[
+                _sentence_out(s)
+                for s in by_lesson.get(clip.lesson_id, [])
+                if clip.start_idx <= s.idx <= clip.end_idx
+            ],
         )
         for clip, lesson in rows
     ]
@@ -213,27 +238,28 @@ def get_lesson(lesson_id: str, db: Session = Depends(get_session)) -> LessonDeta
         difficulty=lesson.difficulty,
         duration_ms=lesson.duration_ms,
         source=lesson.source,
-        sentences=[
-            SentenceOut(
-                id=s.id,
-                idx=s.idx,
-                start_ms=s.start_ms,
-                end_ms=s.end_ms,
-                text_en=s.text_en,
-                text_zh=s.text_zh,
-                difficulty=s.difficulty,
-                tokens=[
-                    TokenOut(
-                        char_span=(t.char_start, t.char_end),
-                        surface=t.surface,
-                        lemma=t.lemma,
-                        pos=t.pos,
-                        dict_ref=t.dict_ref,
-                    )
-                    for t in s.tokens
-                ],
+        sentences=[_sentence_out(s) for s in lesson.sentences],
+    )
+
+
+def _sentence_out(s: Sentence) -> SentenceOut:
+    return SentenceOut(
+        id=s.id,
+        idx=s.idx,
+        start_ms=s.start_ms,
+        end_ms=s.end_ms,
+        text_en=s.text_en,
+        text_zh=s.text_zh,
+        difficulty=s.difficulty,
+        tokens=[
+            TokenOut(
+                char_span=(t.char_start, t.char_end),
+                surface=t.surface,
+                lemma=t.lemma,
+                pos=t.pos,
+                dict_ref=t.dict_ref,
             )
-            for s in lesson.sentences
+            for t in s.tokens
         ],
     )
 
