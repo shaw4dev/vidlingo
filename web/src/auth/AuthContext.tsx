@@ -11,6 +11,7 @@ import {
   type ReactNode,
 } from 'react'
 import { api, tokenStore, type User } from '../lib/api'
+import { resetVocabIndex } from '../features/vocab/useVocabIndex'
 
 interface AuthState {
   user: User | null
@@ -70,6 +71,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = useCallback(() => {
     tokenStore.clear()
     setUser(null)
+    // The saved-word tint is cached outside React and outlives the token
+    // otherwise — the next visitor on this browser would see the last user's
+    // words highlighted in the transcript.
+    resetVocabIndex()
   }, [])
 
   const value = useMemo(

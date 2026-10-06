@@ -1,13 +1,66 @@
+/* Palette -----------------------------------------------------------------
+ *
+ * Dark, because the product is a video player. A light chrome around a black
+ * 16:9 frame makes the frame look like a hole in the page; a dark one makes
+ * the still the brightest thing on screen, which is the whole pitch of a
+ * browse-by-poster library. Everything below is a token: the components were
+ * already written against `--card` / `--border` / `--accent`, so the surfaces
+ * followed the moment these changed, and the handful of literal hexes that
+ * had leaked into feature styles were folded into the semantic sets here.
+ */
 :root {
-  --text: #3a3a42;
-  --text-muted: #8a8a93;
-  --text-h: #14131a;
-  --bg: #fafafa;
-  --card: #fff;
-  --border: #e5e4e7;
-  --accent: #4f46e5;
+  color-scheme: dark;
+
+  --text: #d6d6e0;
+  --text-muted: #8e8e9e;
+  --text-h: #f4f4f8;
+
+  /* Three surfaces, not one: the page, the card that sits on it, and the
+   * hover/inset state above that. Two would force borders to do all the
+   * separating, which reads as wireframe rather than product. */
+  --bg: #0b0b10;
+  --card: #15151d;
+  --surface-2: #1d1d27;
+  --border: #272733;
+  --border-strong: #3a3a49;
+
+  --accent: #7c6cff;
+  --accent-hover: #8f80ff;
   --accent-text: #fff;
-  --error: #c0392b;
+  /* Tinted fills for chips, banners and active tabs. Alpha rather than a
+   * flat hex so they sit correctly on both --card and --surface-2. */
+  --accent-soft: rgb(124 108 255 / 14%);
+  --accent-soft-strong: rgb(124 108 255 / 24%);
+  --accent-soft-border: rgb(124 108 255 / 38%);
+  --accent-glow: rgb(124 108 255 / 18%);
+
+  /* Status triplets. The mastery pills, the grade buttons, the form banners
+   * and the difficulty badges all drew from their own private greens and
+   * ambers; one set keeps them in the same key. */
+  --ok-bg: rgb(46 204 129 / 14%);
+  --ok-text: #4ade9b;
+  --ok-border: rgb(46 204 129 / 32%);
+  --warn-bg: rgb(245 176 66 / 14%);
+  --warn-text: #f0b45a;
+  --warn-border: rgb(245 176 66 / 32%);
+  --bad-bg: rgb(244 92 92 / 14%);
+  --bad-text: #ff7b7b;
+  --bad-border: rgb(244 92 92 / 32%);
+  --error: #ff7b7b;
+
+  --skeleton: #1d1d27;
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 40%), 0 18px 40px -24px rgb(0 0 0 / 80%);
+
+  /* Word status (Language Reactor's idea): a saved word is tinted wherever it
+   * appears in a transcript, so progress is legible in the text itself rather
+   * than only on the vocab page. The three hues are the mastery pills' own —
+   * a word must not be violet on one screen and amber on another. */
+  --w-new: #9d90ff;
+  --w-new-bg: rgb(124 108 255 / 18%);
+  --w-learning: #f0b45a;
+  --w-learning-bg: rgb(245 176 66 / 16%);
+  --w-mastered: #4ade9b;
+  --w-mastered-bg: rgb(46 204 129 / 14%);
 
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   color: var(--text);
@@ -94,7 +147,7 @@ h2 {
 }
 
 .nav-tab:hover {
-  background: #f1efff;
+  background: var(--accent-soft);
   color: var(--accent);
 }
 
@@ -208,18 +261,18 @@ h2 {
 }
 
 .level-easy {
-  background: #e7f6ec;
-  color: #1c7c43;
+  background: var(--ok-bg);
+  color: var(--ok-text);
 }
 
 .level-medium {
-  background: #fff3da;
-  color: #9a6412;
+  background: var(--warn-bg);
+  color: var(--warn-text);
 }
 
 .level-hard {
-  background: #fdeaea;
-  color: #b3261e;
+  background: var(--bad-bg);
+  color: var(--bad-text);
 }
 
 /* Cards & forms ----------------------------------------------------------- */
@@ -340,7 +393,7 @@ button.link {
 }
 
 .neighbour:hover {
-  background: #f1efff;
+  background: var(--accent-soft);
 }
 
 .neighbour.disabled {
@@ -425,7 +478,7 @@ button.link {
 }
 
 .token:hover {
-  background: #ece9fe;
+  background: var(--accent-soft-strong);
   color: var(--accent);
 }
 
@@ -435,7 +488,7 @@ button.link {
   gap: 0.35rem;
   margin-top: 0.5rem;
   padding: 0.3rem 0.6rem;
-  background: #ece9fe;
+  background: var(--accent-soft-strong);
   border-radius: 999px;
   font-size: 0.9rem;
 }
@@ -488,11 +541,11 @@ button.link {
 }
 
 .sentence-row:hover {
-  background: #f4f3ff;
+  background: var(--accent-soft);
 }
 
 .sentence-row.active {
-  background: #ece9fe;
+  background: var(--accent-soft-strong);
   border-left: 3px solid var(--accent);
 }
 
@@ -505,35 +558,108 @@ button.link {
   color: var(--text-h);
 }
 
-/* Feed -------------------------------------------------------------------- */
+/* Feed (Shorts) ------------------------------------------------------------
+ *
+ * Full-bleed: the page drops its column so every clip can wash the whole
+ * screen in its own colour. The header keeps the site's column.
+ */
+.page.feed-page {
+  max-width: none;
+  height: 100dvh;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Whatever the header turns out to be (it wraps to two rows on a phone), the
+   feed takes exactly the rest: no fixed offset to fall out of step with it. */
+.feed-page .topbar {
+  flex: 0 0 auto;
+  width: 100%;
+  max-width: 1240px;
+  margin: 0 auto;
+  padding-inline: 1rem;
+  border-bottom-color: transparent;
+}
+
+.feed-status {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  margin: 0;
+}
 
 .feed-scroll {
-  height: calc(100vh - 4.5rem);
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
   scroll-snap-type: y mandatory;
-  scroll-behavior: smooth;
-  margin: 0 -1rem;
+  /* Items and the stage size themselves from this box, via cqh. */
+  container-type: size;
+  /* One clip per screen; a scrollbar only says "this is a long web page". */
+  scrollbar-width: none;
+}
+
+.feed-scroll::-webkit-scrollbar {
+  display: none;
 }
 
 .feed-item {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
   scroll-snap-align: start;
-  /* Exactly one viewport — not `min-height`. A taller item makes the gesture
-     that should scroll its caption jump to the next clip instead. */
-  height: calc(100vh - 4.5rem);
+  scroll-snap-stop: always;
+  /* Exactly one screen — not `min-height`. See the note in FeedPage. */
+  height: 100cqh;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 1.5rem;
+  padding: 1.25rem max(1rem, calc((100vw - 1240px) / 2 + 1rem));
+}
+
+.feed-backdrop {
+  position: absolute;
+  inset: -80px;
+  z-index: -1;
+  background: center / cover no-repeat;
+  filter: blur(60px) saturate(1.4) brightness(0.32);
+  transform: scale(1.1);
+}
+
+.feed-backdrop::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at center, transparent 30%, rgb(11 11 16 / 70%) 100%);
+}
+
+/* The stage is sized from the height down: the video may take what is left
+   once the caption and the info row have their room, and no more. */
+.feed-stage {
+  position: relative;
+  justify-self: center;
+  width: min(100%, calc((100cqh - 16rem) * 16 / 9), 880px);
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  gap: 0.9rem;
-  padding: 0 1rem 1rem;
+  gap: 1.25rem;
+}
+
+.feed-video {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  border-radius: 16px;
+  overflow: hidden;
+  background: #000;
+  box-shadow: 0 30px 80px -30px rgb(0 0 0 / 90%), 0 0 0 1px rgb(255 255 255 / 6%);
 }
 
 .clip-player,
 .clip-poster {
-  aspect-ratio: 16 / 9;
   width: 100%;
+  height: 100%;
   background: #000 center / cover no-repeat;
-  border-radius: 12px;
-  overflow: hidden;
 }
 
 .clip-player iframe {
@@ -542,36 +668,196 @@ button.link {
   border: 0;
 }
 
+.feed-tap {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.feed-tap.paused {
+  background: rgb(0 0 0 / 28%);
+}
+
+.feed-tap.unstarted {
+  background: #000 center / cover no-repeat;
+}
+
+.feed-tap-icon {
+  display: grid;
+  place-items: center;
+  width: 4rem;
+  height: 4rem;
+  padding-left: 4px;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 16%);
+  backdrop-filter: blur(12px);
+  color: #fff;
+}
+
+.feed-progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 3px;
+  background: rgb(255 255 255 / 14%);
+  pointer-events: none;
+}
+
+.feed-progress > span {
+  display: block;
+  height: 100%;
+  background: #fff;
+  transform-origin: left;
+  transition: transform 0.12s linear;
+}
+
+/* Two lines of English and one of Chinese are reserved, so the page does not
+   jump each time a short line follows a long one. */
 .feed-caption {
-  min-height: 0; /* let it shrink inside the flex column so overflow can scroll */
-  overflow-y: auto;
+  min-height: 6.75rem;
+  text-align: center;
+  text-wrap: balance;
+}
+
+.feed-line-en {
+  margin: 0;
+  font-size: clamp(1.2rem, 1.9vw, 1.6rem);
+  font-weight: 500;
+  line-height: 1.4;
+  letter-spacing: -0.01em;
+  color: var(--text-h);
+}
+
+.feed-line-zh {
+  margin: 0.45rem 0 0;
+  font-size: 1.02rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.feed-info {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgb(255 255 255 / 10%);
+}
+
+.feed-info-text {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 0.2rem;
+}
+
+.feed-show {
+  color: var(--accent);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.feed-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .feed-meta {
-  margin-bottom: 0.35rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
-.feed-text {
-  font-size: 1.2rem;
-  line-height: 1.7;
+.feed-open {
+  flex: 0 0 auto;
+  padding: 0.55rem 1rem;
+  font-size: 0.88rem;
+}
+
+.feed-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.feed-rail-btn {
+  display: grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  padding: 0;
+  border-radius: 999px;
+  border: 1px solid rgb(255 255 255 / 14%);
+  background: rgb(255 255 255 / 8%);
+  backdrop-filter: blur(10px);
+  color: var(--text-h);
+}
+
+.feed-rail-btn:hover:not(:disabled) {
+  background: rgb(255 255 255 / 16%);
+}
+
+.feed-rail-btn:disabled {
+  opacity: 0.25;
+}
+
+/* A word card floats over the stage rather than pushing the caption down. */
+.feed-word-sheet {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 2;
+  width: min(22rem, 100%);
+  max-height: 100%;
+  overflow-y: auto;
+  border-radius: 14px;
+  box-shadow: var(--shadow-card);
+}
+
+.feed-word-sheet .word-card {
   margin: 0;
-  color: var(--text-h);
-}
-
-.feed-word {
-  color: var(--text-h);
-  text-decoration: none;
-  border-radius: 4px;
-  padding: 0 1px;
-}
-
-.feed-word:hover {
-  background: #ece9fe;
-  color: var(--accent);
 }
 
 .feed-end {
-  padding: 2rem 0;
+  min-height: auto;
+  padding: 3rem 0;
+}
+
+@media (width <= 760px) {
+  .feed-item {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 1rem;
+  }
+
+  /* Swiping is the navigation on a phone. */
+  .feed-rail {
+    display: none;
+  }
+
+  .feed-stage {
+    width: 100%;
+  }
+
+  .feed-word-sheet {
+    position: fixed;
+    top: auto;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    max-height: 70dvh;
+    border-radius: 16px 16px 0 0;
+  }
 }
 
 /* Word detail ------------------------------------------------------------- */
@@ -744,21 +1030,21 @@ button.link {
 }
 
 .mastery-new {
-  background: #f1efff;
+  background: var(--accent-soft);
   color: var(--accent);
-  border-color: #ddd8ff;
+  border-color: var(--accent-soft-border);
 }
 
 .mastery-learning {
-  background: #fff3da;
-  color: #9a6412;
-  border-color: #f3e2bd;
+  background: var(--warn-bg);
+  color: var(--warn-text);
+  border-color: var(--warn-border);
 }
 
 .mastery-mastered {
-  background: #e7f6ec;
-  color: #1c7c43;
-  border-color: #cfe9d8;
+  background: var(--ok-bg);
+  color: var(--ok-text);
+  border-color: var(--ok-border);
 }
 
 .vocab-source {
@@ -795,7 +1081,7 @@ button.link {
   justify-content: center;
   padding: 2rem 1rem;
   background:
-    radial-gradient(60rem 30rem at 50% -12rem, #eeecff 0%, transparent 60%),
+    radial-gradient(60rem 30rem at 50% -12rem, var(--accent-glow) 0%, transparent 60%),
     var(--bg);
 }
 
@@ -809,7 +1095,7 @@ button.link {
   border: 1px solid var(--border);
   border-radius: 14px;
   padding: 2rem 1.75rem 1.5rem;
-  box-shadow: 0 1px 2px rgb(20 19 26 / 4%), 0 18px 40px -28px rgb(20 19 26 / 35%);
+  box-shadow: var(--shadow-card);
 }
 
 .auth-brand {
@@ -910,7 +1196,7 @@ button.link {
 
 .reveal:hover {
   color: var(--accent);
-  background: #f1efff;
+  background: var(--accent-soft);
 }
 
 .field-hint {
@@ -934,14 +1220,14 @@ button.link {
 
 .form-error {
   color: var(--error);
-  background: #fdf1ef;
-  border: 1px solid #f3d6d1;
+  background: var(--bad-bg);
+  border: 1px solid var(--bad-border);
 }
 
 .form-ok {
-  color: #17694c;
-  background: #eefaf4;
-  border: 1px solid #cfeadf;
+  color: var(--ok-text);
+  background: var(--ok-bg);
+  border: 1px solid var(--ok-border);
 }
 
 /* Buttons ----------------------------------------------------------------- */
@@ -1006,7 +1292,7 @@ a.btn-primary {
 
 .account-link:hover,
 .account-link.active {
-  background: #f1efff;
+  background: var(--accent-soft);
   color: var(--accent);
 }
 
@@ -1138,13 +1424,13 @@ a.btn-primary {
 }
 
 .skeleton .thumb {
-  background: #eeedf1;
+  background: var(--skeleton);
 }
 
 .skeleton-line {
   height: 0.7rem;
   border-radius: 4px;
-  background: #eeedf1;
+  background: var(--skeleton);
   margin-bottom: 0.45rem;
 }
 
@@ -1242,5 +1528,926 @@ a.btn-primary {
 @media (prefers-reduced-motion: reduce) {
   .player-poster-btn {
     transition: none;
+  }
+}
+
+/* Review (SRS) ------------------------------------------------------------- */
+.review-card { display: grid; gap: 0.9rem; margin: 0.5rem 0 1rem; }
+.review-clip { display: grid; gap: 0.5rem; justify-items: start; }
+/* Capped, not full-width: a 16:9 frame across the card pushed the grade
+   buttons below the fold, and a review is a screen where you press one every
+   few seconds. */
+.review-clip .player-mount { width: 100%; max-width: 340px; aspect-ratio: 16 / 9; border-radius: 10px; overflow: hidden; background: #000; }
+.review-clip iframe { width: 100%; height: 100%; border: 0; }
+
+.cloze-line { font-size: 1.35rem; line-height: 1.7; margin: 0; }
+/* The blank is sized from the word it hides, so the gap itself doesn't leak
+   the answer's length as a hint. */
+.cloze-blank { border-bottom: 2px solid var(--accent); white-space: pre; margin: 0 0.15rem; }
+.cloze-revealed { color: var(--accent); font-weight: 600; }
+
+.review-back { display: grid; gap: 0.4rem; border-top: 1px solid var(--border); padding-top: 0.8rem; }
+.review-answer { font-size: 1.15rem; }
+.review-gloss { margin: 0; }
+
+.grade-row { display: flex; gap: 0.6rem; }
+/* Same hues as the mastery pills, so the palette doesn't grow a second
+   vocabulary for the same idea. */
+.grade-btn { flex: 1; padding: 0.7rem 0.5rem; border-radius: 10px; border: 1px solid var(--border);
+             background: var(--card); font-size: 1rem; cursor: pointer; }
+.grade-forgot { background: var(--bad-bg); color: var(--bad-text); border-color: var(--bad-border); }
+.grade-vague { background: var(--warn-bg); color: var(--warn-text); border-color: var(--warn-border); }
+.grade-remembered { background: var(--ok-bg); color: var(--ok-text); border-color: var(--ok-border); }
+.grade-hint { display: block; font-size: 0.7rem; opacity: 0.6; }
+
+.review-empty { display: grid; gap: 0.5rem; padding: 2rem 0; }
+.review-banner { display: block; background: var(--accent-soft); border: 1px solid var(--accent-soft-border); color: var(--accent);
+                 border-radius: 10px; padding: 0.6rem 0.9rem; margin-bottom: 0.8rem; text-decoration: none; }
+
+.nav-badge { display: inline-block; min-width: 1.15rem; margin-left: 0.35rem; padding: 0 0.3rem;
+             border-radius: 999px; background: var(--accent); color: var(--accent-text);
+             font-size: 0.7rem; line-height: 1.15rem; text-align: center; }
+
+/* The cue that makes the blank answerable. Quieter than the English line: it
+   is there to disambiguate, not to be read first. */
+.cloze-zh { color: var(--text-muted); margin: 0.35rem 0 0; }
+.cloze-note { color: var(--text-muted); font-size: 0.78rem; margin: 0.2rem 0 0; }
+
+/* Explore: hero ------------------------------------------------------------
+ *
+ * Three layers: a blurred copy of the clip's own still bleeding to the edges,
+ * a scrim to seat it, and the copy. The still also appears crisp inside the
+ * card on the right — see the comment on HeroFrame for why it is not simply
+ * used full-bleed.
+ */
+.hero {
+  position: relative;
+  margin: 0 0 2.25rem;
+  border-radius: 18px;
+  overflow: hidden;
+  background: var(--card);
+  isolation: isolate;
+}
+
+.hero-bg {
+  position: absolute;
+  /* Blur samples past the element's own edges, which would otherwise fade to
+     transparent and leave a pale halo inside the border radius. Oversizing by
+     the blur radius pushes that artefact outside the clip. */
+  inset: -60px;
+  background: center / cover no-repeat;
+  filter: blur(44px) saturate(1.5) brightness(0.55);
+  transform: scale(1.06);
+}
+
+.hero-shade {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(90deg, rgb(11 11 16 / 88%) 0%, rgb(11 11 16 / 60%) 60%, rgb(11 11 16 / 35%) 100%),
+    linear-gradient(0deg, rgb(11 11 16 / 80%) 0%, transparent 70%);
+}
+
+.hero-body {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 20rem;
+  align-items: center;
+  gap: 2.5rem;
+  padding: 2.75rem 2.25rem;
+}
+
+.hero.compact .hero-body {
+  padding: 2rem 2.25rem;
+}
+
+.hero-copy {
+  max-width: 38rem;
+}
+
+.hero-eyebrow {
+  margin: 0 0 0.7rem;
+  color: var(--accent);
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.hero-title {
+  margin: 0 0 0.8rem;
+  font-size: clamp(1.75rem, 3.2vw, 2.6rem);
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+}
+
+.hero-title.small {
+  font-size: clamp(1.35rem, 2.2vw, 1.85rem);
+}
+
+.hero-sub {
+  margin: 0 0 1.3rem;
+  max-width: 32rem;
+  font-size: 1rem;
+  line-height: 1.5;
+  color: var(--text);
+}
+
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.btn-hero {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.7rem 1.35rem;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: var(--accent);
+  color: var(--accent-text);
+  font-weight: 600;
+  font-size: 0.95rem;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.btn-hero:hover {
+  background: var(--accent-hover);
+}
+
+/* Over a photograph a translucent fill beats a border: it stays legible on a
+   bright frame and a dark one without a second rule for each. */
+.btn-hero.ghost {
+  background: rgb(255 255 255 / 12%);
+  border-color: rgb(255 255 255 / 24%);
+  color: var(--text-h);
+  backdrop-filter: blur(6px);
+}
+
+.btn-hero.ghost:hover {
+  background: rgb(255 255 255 / 20%);
+}
+
+.hero-note {
+  margin: 0.9rem 0 0;
+  max-width: 30rem;
+}
+
+.hero-features {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  gap: 0.9rem 1.5rem;
+  margin: 1.75rem 0 0;
+  padding: 1.25rem 0 0;
+  border-top: 1px solid rgb(255 255 255 / 12%);
+  list-style: none;
+}
+
+.hero-features li {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.hero-features strong {
+  color: var(--text-h);
+  font-size: 0.92rem;
+}
+
+/* The crisp still, as a card. */
+.hero-poster {
+  display: grid;
+  gap: 0.45rem;
+  padding: 0.65rem;
+  border: 1px solid rgb(255 255 255 / 14%);
+  border-radius: 14px;
+  background: rgb(21 21 29 / 72%);
+  backdrop-filter: blur(10px);
+  color: var(--text-h);
+  text-decoration: none;
+  box-shadow: var(--shadow-card);
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+
+.hero-poster:hover {
+  transform: translateY(-2px);
+  border-color: rgb(255 255 255 / 28%);
+}
+
+.hero-poster-still {
+  position: relative;
+  display: block;
+  aspect-ratio: 16 / 9;
+  border-radius: 9px;
+  overflow: hidden;
+  background: #000 center / cover no-repeat;
+}
+
+.hero-poster-play {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  text-shadow: 0 2px 10px rgb(0 0 0 / 70%);
+}
+
+.hero-poster-title {
+  font-size: 0.92rem;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.hero-poster-meta {
+  line-height: 1.3;
+}
+
+/* Below this the poster and the copy each get too narrow to be worth the
+   split; the poster goes first, because the picture is the invitation. */
+@media (width <= 900px) {
+  .hero-body {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1.5rem;
+  }
+
+  .hero-aside {
+    order: -1;
+    max-width: 22rem;
+  }
+}
+
+/* Explore: shelves --------------------------------------------------------- */
+
+.shelf {
+  margin: 0 0 2.25rem;
+}
+
+.shelf-head {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.shelf-title {
+  margin: 0;
+  font-size: 1.15rem;
+  letter-spacing: -0.01em;
+}
+
+.shelf-blurb {
+  margin: 0.15rem 0 0;
+}
+
+.shelf-all {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  text-decoration: none;
+}
+
+.shelf-all:hover {
+  color: var(--accent);
+}
+
+.shelf-arrows {
+  display: flex;
+  gap: 0.3rem;
+}
+
+.shelf-arrow {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--text);
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.shelf-arrow:hover:not(:disabled) {
+  border-color: var(--border-strong);
+  background: var(--surface-2);
+}
+
+.shelf-arrow:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+/* The row is a plain scroller so wheel, swipe and Tab all work; the arrows
+   only call scrollBy on it. */
+.shelf-row {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(15.5rem, 15.5rem);
+  gap: 0.9rem;
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  padding-bottom: 0.4rem;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+
+.shelf-row > * {
+  scroll-snap-align: start;
+}
+
+@media (width <= 640px) {
+  .shelf-row {
+    grid-auto-columns: minmax(12.5rem, 12.5rem);
+  }
+
+  .hero-body {
+    padding: 2.5rem 1.25rem 1.75rem;
+  }
+}
+
+/* A play badge on the still, so a card reads as a video rather than an
+   article card with a picture on it. */
+.thumb-play {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  opacity: 0;
+  background: rgb(0 0 0 / 30%);
+  transition: opacity 0.15s ease;
+}
+
+.lesson-card:hover .thumb-play,
+.lesson-card:focus-visible .thumb-play {
+  opacity: 1;
+}
+
+.thumb-progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 3px;
+  background: rgb(255 255 255 / 22%);
+}
+
+.thumb-progress > span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+
+.chip-count {
+  margin-left: 0.35rem;
+  opacity: 0.6;
+  font-size: 0.75rem;
+}
+
+/* Word status in the transcript -------------------------------------------
+ *
+ * Tint plus an underline, not tint alone: the two states are a warm and a
+ * cool hue, which is exactly the pair that stops being a distinction for a
+ * red-green colour-blind reader.
+ */
+.tok-new {
+  color: var(--w-new);
+  background: var(--w-new-bg);
+  box-shadow: inset 0 -2px 0 var(--w-new);
+}
+
+.tok-learning {
+  color: var(--w-learning);
+  background: var(--w-learning-bg);
+  box-shadow: inset 0 -2px 0 var(--w-learning);
+}
+
+.tok-mastered {
+  color: var(--w-mastered);
+  background: var(--w-mastered-bg);
+  box-shadow: inset 0 -2px 0 var(--w-mastered);
+}
+
+.legend {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  padding: 0.5rem 0.7rem;
+  margin-bottom: 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+  font-size: 0.82rem;
+}
+
+.legend-pitch {
+  border-color: var(--accent-soft-border);
+  background: var(--accent-soft);
+}
+
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.swatch {
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 3px;
+}
+
+.swatch-new {
+  background: var(--w-new);
+}
+
+.swatch-learning {
+  background: var(--w-learning);
+}
+
+.swatch-mastered {
+  background: var(--w-mastered);
+}
+
+/* The sign-up gate --------------------------------------------------------- */
+
+.gate {
+  margin: 2rem auto 0;
+  padding: 2rem 1.75rem;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background:
+    radial-gradient(40rem 20rem at 0% -8rem, var(--accent-glow) 0%, transparent 65%),
+    var(--card);
+}
+
+.gate-badge {
+  display: inline-block;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-soft-border);
+  color: var(--accent);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.gate-title {
+  margin: 0.9rem 0 0.5rem;
+  font-size: 1.6rem;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+}
+
+.gate-sub {
+  margin: 0 0 1.25rem;
+  color: var(--text);
+}
+
+.gate-points {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0 0 1.5rem;
+  padding: 0;
+  list-style: none;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.gate-points li {
+  padding-left: 1.4rem;
+  position: relative;
+}
+
+.gate-points li::before {
+  content: '✓';
+  position: absolute;
+  left: 0;
+  color: var(--ok-text);
+}
+
+.gate-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.gate-foot {
+  margin: 1.1rem 0 0;
+}
+
+/* Onboarding --------------------------------------------------------------- */
+
+.onboard-steps {
+  display: flex;
+  gap: 0.3rem;
+  margin-bottom: 1.25rem;
+}
+
+.onboard-steps span {
+  height: 3px;
+  width: 2rem;
+  border-radius: 999px;
+  background: var(--border);
+}
+
+.onboard-steps span.on {
+  background: var(--accent);
+}
+
+.choice-list {
+  display: grid;
+  gap: 0.5rem;
+  margin: 1.25rem 0;
+}
+
+.choice {
+  display: grid;
+  gap: 0.2rem;
+  text-align: left;
+  padding: 0.8rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.choice:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-2);
+}
+
+.choice.on {
+  border-color: var(--accent-soft-border);
+  background: var(--accent-soft);
+}
+
+.choice strong {
+  color: var(--text-h);
+}
+
+.choice-row {
+  display: flex;
+  gap: 0.5rem;
+  margin: 1.25rem 0;
+}
+
+.choice-pill {
+  flex: 1;
+  display: grid;
+  gap: 0.1rem;
+  padding: 0.9rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+  color: var(--text-h);
+  font-size: 1.25rem;
+  cursor: pointer;
+}
+
+.choice-pill.on {
+  border-color: var(--accent-soft-border);
+  background: var(--accent-soft);
+}
+
+.onboard-back,
+.onboard-skip {
+  margin-top: 0.75rem;
+  background: none;
+  border: 0;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.onboard-skip {
+  margin-top: 1.25rem;
+  text-align: center;
+}
+
+/* Header identity, dark ---------------------------------------------------- */
+
+.brand-mark {
+  display: inline-block;
+  width: 0.85rem;
+  height: 0.85rem;
+  margin-right: 0.45rem;
+  border-radius: 4px;
+  background: linear-gradient(135deg, var(--accent) 0%, #4ade9b 130%);
+  vertical-align: -1px;
+}
+
+.btn-small.quiet {
+  background: none;
+  border-color: var(--border);
+  color: var(--text-muted);
+}
+
+.btn-small.quiet:hover {
+  color: var(--text-h);
+  border-color: var(--border-strong);
+}
+
+/* The nav grew from four tabs to five, and the signed-out side from one button
+   to two. On a phone that is wider than a phone: the bar is a nowrap flex row,
+   so it used to push the whole page sideways. Below the break the tabs drop to
+   their own full-width line and scroll horizontally — a nav that scrolls is
+   still a nav; a page that scrolls sideways is a bug. */
+@media (width <= 720px) {
+  .topbar {
+    flex-wrap: wrap;
+    row-gap: 0.6rem;
+  }
+
+  .nav {
+    order: 3;
+    width: 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .nav-tab {
+    white-space: nowrap;
+  }
+}
+
+/* Explore: the sections under the hero -------------------------------------
+ *
+ * One point per section, and more air than the shelves had: a section header
+ * that is a sentence, not a label, and room above it so it reads as a new
+ * thought rather than the next row.
+ */
+.section-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.section-head .hero-eyebrow {
+  margin-bottom: 0.5rem;
+}
+
+.section-title {
+  margin: 0;
+  font-size: clamp(1.5rem, 2.6vw, 2.1rem);
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+
+.section-title.small {
+  font-size: 1.35rem;
+}
+
+.how,
+.shows {
+  margin: 4.5rem 0;
+}
+
+.how .section-head {
+  display: block;
+}
+
+.how-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.how-card {
+  display: flex;
+  flex-direction: column;
+  padding: 1rem 1rem 1.4rem;
+  border-radius: 20px;
+  background: var(--card);
+  border: 1px solid var(--border);
+}
+
+.how-card h3 {
+  margin: 1.25rem 0.4rem 0.35rem;
+  color: var(--text-h);
+  font-size: 1.1rem;
+}
+
+.how-card > p {
+  margin: 0 0.4rem;
+  color: var(--text-muted);
+  font-size: 0.93rem;
+  line-height: 1.5;
+}
+
+/* The demo is a little stage of real interface, on the page's own black. */
+.how-demo {
+  position: relative;
+  height: 11.5rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 1rem;
+  border-radius: 14px;
+  background:
+    radial-gradient(ellipse at 50% 0%, var(--accent-glow), transparent 70%),
+    var(--bg);
+  overflow: hidden;
+}
+
+.demo-line {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 500;
+  color: var(--text-h);
+}
+
+.demo-zh {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.demo-word {
+  padding: 0 3px;
+  border-radius: 4px;
+  background: var(--accent-soft-strong);
+  color: var(--accent-hover);
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+
+.demo-card {
+  display: grid;
+  gap: 0.2rem;
+  min-width: 12rem;
+  padding: 0.6rem 0.8rem;
+  border-radius: 10px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-2);
+  box-shadow: var(--shadow-card);
+}
+
+.demo-card-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  color: var(--text-h);
+}
+
+.demo-wave {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  height: 3.5rem;
+  width: 100%;
+  max-width: 15rem;
+}
+
+.demo-wave span {
+  flex: 1;
+  border-radius: 2px;
+  background: var(--border-strong);
+}
+
+.demo-wave span.on {
+  background: var(--accent);
+}
+
+.demo-pills,
+.demo-grades {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.demo-pills span,
+.demo-grades span {
+  padding: 0.25rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  font-size: 0.8rem;
+}
+
+.demo-pills span.on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+
+.demo-pills .demo-loop {
+  color: var(--accent-hover);
+  border-color: var(--accent-soft-border);
+}
+
+.demo-blank {
+  display: inline-block;
+  min-width: 3.5rem;
+  color: transparent;
+  border-bottom: 2px solid var(--accent);
+}
+
+.demo-grades .bad { color: var(--bad-text); border-color: var(--bad-border); background: var(--bad-bg); }
+.demo-grades .warn { color: var(--warn-text); border-color: var(--warn-border); background: var(--warn-bg); }
+.demo-grades .ok { color: var(--ok-text); border-color: var(--ok-border); background: var(--ok-bg); }
+
+.demo-due {
+  margin: 0;
+}
+
+/* Shows as posters. */
+.show-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr));
+  gap: 1rem;
+}
+
+.show-tile {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  aspect-ratio: 4 / 3;
+  border-radius: 16px;
+  overflow: hidden;
+  isolation: isolate;
+  color: #fff;
+  text-decoration: none;
+  background: var(--card);
+}
+
+.show-tile-still {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: center / cover no-repeat;
+  transition: transform 0.4s ease;
+}
+
+.show-tile-still::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(0deg, rgb(11 11 16 / 92%) 0%, rgb(11 11 16 / 30%) 55%, transparent 100%);
+}
+
+.show-tile:hover .show-tile-still {
+  transform: scale(1.05);
+}
+
+.show-tile-body {
+  display: grid;
+  gap: 0.15rem;
+  padding: 1rem 1.1rem;
+}
+
+.show-tile-body strong {
+  font-size: 1.05rem;
+  line-height: 1.25;
+}
+
+.show-tile-body .small {
+  color: rgb(255 255 255 / 70%);
+}
+
+/* The way in. */
+.closing {
+  margin: 5rem 0 3rem;
+  padding: 3.5rem 1.5rem;
+  border-radius: 24px;
+  text-align: center;
+  background:
+    radial-gradient(ellipse at 50% 120%, var(--accent-soft-strong), transparent 65%),
+    var(--card);
+  border: 1px solid var(--border);
+}
+
+.closing > p {
+  margin: 0.75rem auto 1.75rem;
+  max-width: 30rem;
+}
+
+.closing .hero-actions {
+  justify-content: center;
+}
+
+@media (width <= 820px) {
+  .how-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .how,
+  .shows {
+    margin: 3rem 0;
+  }
+
+  .show-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

@@ -13,6 +13,12 @@ import { api, ApiError, type LessonSummary } from '../../lib/api'
 export const DIFFICULTIES = ['easy', 'medium', 'hard'] as const
 export type Difficulty = (typeof DIFFICULTIES)[number]
 
+export const DIFFICULTY_LABELS: Record<Difficulty, string> = {
+  easy: 'Easy',
+  medium: 'Medium',
+  hard: 'Hard',
+}
+
 let cache: Promise<LessonSummary[]> | null = null
 
 function fetchLessons(): Promise<LessonSummary[]> {
@@ -58,6 +64,38 @@ export function formatDuration(ms: number): string {
   const s = total % 60
   const mm = h ? String(m).padStart(2, '0') : String(m)
   return `${h ? `${h}:` : ''}${mm}:${String(s).padStart(2, '0')}`
+}
+
+/** Which levels the corpus actually contains, in order.
+ *
+ *  Filters and shelves are built from this rather than from DIFFICULTIES: the
+ *  library holds no easy clips today, and an "Easy" chip that always returns
+ *  "nothing matches" reads as a broken filter, not as an honest catalogue. */
+export function levelsPresent(lessons: LessonSummary[]): Difficulty[] {
+  const present = new Set(lessons.map((l) => l.difficulty))
+  return DIFFICULTIES.filter((d) => present.has(d))
+}
+
+/** The closest level to `want` that has at least `min` clips, or null.
+ *
+ *  Someone who told onboarding they are a beginner should still get a top
+ *  shelf; it should just be the gentlest thing we actually have. */
+export function nearestLevel(
+  lessons: LessonSummary[],
+  want: Difficulty,
+  min = 3,
+): Difficulty | null {
+  const counts = new Map<Difficulty, number>()
+  for (const l of lessons) {
+    const d = l.difficulty as Difficulty | null
+    if (d) counts.set(d, (counts.get(d) ?? 0) + 1)
+  }
+  const wantAt = DIFFICULTIES.indexOf(want)
+  return (
+    [...DIFFICULTIES]
+      .filter((d) => (counts.get(d) ?? 0) >= min)
+      .sort((a, b) => Math.abs(DIFFICULTIES.indexOf(a) - wantAt) - Math.abs(DIFFICULTIES.indexOf(b) - wantAt))[0] ?? null
+  )
 }
 
 export function thumbnailUrl(youtubeId: string | null): string | undefined {

@@ -135,12 +135,15 @@ export interface FeedClip {
   lesson_id: string
   youtube_id: string | null
   title: string
+  source: string | null
   theme: string
   difficulty: string
   start_ms: number
   end_ms: number
   duration_ms: number
   text_en: string
+  /** The window's own lines, for a caption that follows the video. */
+  sentences: Sentence[]
 }
 
 export interface FeedResponse {
@@ -177,7 +180,80 @@ export interface VocabItem {
   source: SourceRef | null
 }
 
+export type Grade = 'forgot' | 'vague' | 'remembered'
+
+/** Which shape a review card takes, decided server-side.
+ *
+ *  A discriminant rather than a pile of null checks on the client: the server
+ *  already knows whether it could blank the word, and "text_en is present but
+ *  must not be shown" is not something to re-derive in a component.
+ */
+export type CardKind = 'cloze' | 'zh_prompt' | 'bare'
+
+export interface ReviewSource extends SourceRef {
+  /** Character ranges in `text_en` to hide. Every occurrence, not just the
+   *  first — a second visible copy would hand over the answer. */
+  blank_spans: [number, number][]
+  /** True when this is not the line the word was saved from: it was saved
+   *  without one, or the original was too short to make a question of. */
+  borrowed: boolean
+}
+
+export interface ReviewDefinition {
+  phonetic: string | null
+  audio_url: string | null
+  gloss_zh: string | null
+}
+
+export interface ReviewCard {
+  vocab_item_id: string
+  lemma: string
+  surface: string | null
+  note: string | null
+  mastery: string
+  due_at: string
+  interval_days: number
+  reps: number
+  card_kind: CardKind
+  source: ReviewSource | null
+  definition: ReviewDefinition | null
+}
+
+export interface ReviewSummary {
+  day_start: string
+  cap: number
+  done_today: number
+  due_total: number
+  /** What the UI shows: today's allowance, not the whole backlog. */
+  scheduled_today: number
+  next_due_at: string | null
+}
+
+export interface ReviewQueue extends ReviewSummary {
+  cards: ReviewCard[]
+}
+
+export interface GradeResult {
+  vocab_item_id: string
+  grade: Grade
+  mastery: string
+  interval_days: number
+  ease: number
+  reps: number
+  due_at: string
+  /** True when this event had already been applied — a retry, not a new answer. */
+  duplicate: boolean
+}
+
 // ---- endpoints -------------------------------------------------------------
+
+/** Minutes east of UTC — the negation of what JS reports.
+ *
+ *  Attached to every review call from here so no caller can forget it: the
+ *  server needs it to know when the user's day starts, and a missing offset
+ *  would silently reset the daily cap at the wrong hour.
+ */
+const tzOffset = () => -new Date().getTimezoneOffset()
 
 export const api = {
   // auth (T04)
@@ -238,4 +314,24 @@ export const api = {
   updateVocab: (id: string, body: { note?: string }) =>
     request<VocabItem>(`/vocab/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   deleteVocab: (id: string) => request<void>(`/vocab/${id}`, { method: 'DELETE' }),
+
+  // review (SRS)
+  reviewSummary: (limit?: number) => request<ReviewSummary>(`/review/summary?${reviewQs(limit)}`),
+  reviewQueue: (limit?: number) => request<ReviewQueue>(`/review/queue?${reviewQs(limit)}`),
+  gradeReview: (body: {
+    client_event_id: string
+    vocab_item_id: string
+    grade: Grade
+    latency_ms?: number
+  }) =>
+    request<GradeResult>('/review/grade', {
+      method: 'POST',
+      body: JSON.stringify({ ...body, tz_offset: tzOffset() }),
+    }),
+}
+
+function reviewQs(limit?: number): string {
+  const qs = new URLSearchParams({ tz_offset: String(tzOffset()) })
+  if (limit != null) qs.set('limit', String(limit))
+  return qs.toString()
 }

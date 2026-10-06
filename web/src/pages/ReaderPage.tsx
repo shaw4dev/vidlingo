@@ -12,9 +12,15 @@ import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { api, ApiError, type LessonDetail, type Sentence, type TokenSpan } from '../lib/api'
 import { AppHeader } from '../components/AppHeader'
 import { useLessons, thumbnailUrl } from '../features/library/useLessons'
+import { clipTitle, showOf } from '../features/library/shows'
+import { markWatched } from '../features/progress/useWatchHistory'
+import { useVocabIndex } from '../features/vocab/useVocabIndex'
+import { useAuth } from '../auth/AuthContext'
 import { useYouTubePlayer } from '../features/reader/useYouTubePlayer'
+import { useSentenceClip } from '../features/reader/useSentenceClip'
 import { TappableSentence } from '../features/reader/TappableSentence'
 import { WordCard } from '../features/word/WordCard'
+import { WordStatusLegend } from '../features/reader/WordStatusLegend'
 
 type SubtitleMode = 'bi' | 'en' | 'zh' | 'off'
 
@@ -94,6 +100,8 @@ function useLessonNeighbours(lessonId: string) {
 
 function Reader({ lesson, startIdx }: { lesson: LessonDetail; startIdx: number }) {
   const sentences = lesson.sentences
+  const { user } = useAuth()
+  const { status } = useVocabIndex(!!user)
   const { wrapRef, ready, playing, currentMs, controls, setRate } = useYouTubePlayer(
     lesson.youtube_id,
   )
@@ -117,8 +125,19 @@ function Reader({ lesson, startIdx }: { lesson: LessonDetail; startIdx: number }
 
   const active = sentences[activeIdx]
 
-  // Boundary handling: loop, auto-pause, or follow the playhead.
-  const pausedAtEnd = useRef(false)
+  // Stopping at the end of the active sentence is shared with the review card.
+  const clip = useSentenceClip({
+    ready,
+    playing,
+    currentMs,
+    controls,
+    startMs: active?.start_ms ?? null,
+    endMs: active?.end_ms ?? null,
+    enabled: autoPause && !repeat,
+  })
+
+  // The other two boundary modes stay here: both need the sentence list, which
+  // is the Reader's business and not a clip's.
   useEffect(() => {
     if (!ready || !active) return
     if (repeat) {
@@ -127,13 +146,7 @@ function Reader({ lesson, startIdx }: { lesson: LessonDetail; startIdx: number }
       }
       return
     }
-    if (autoPause) {
-      if (playing && currentMs >= active.end_ms && !pausedAtEnd.current) {
-        pausedAtEnd.current = true
-        controls.pause()
-      }
-      return
-    }
+    if (autoPause) return // useSentenceClip owns this one
     // Follow mode: keep the highlight on whatever sentence is playing.
     const idx = indexAtMs(sentences, currentMs)
     if (idx !== -1 && idx !== activeIdx) setActiveIdx(idx)
@@ -143,6 +156,13 @@ function Reader({ lesson, startIdx }: { lesson: LessonDetail; startIdx: number }
     if (playing) setStarted(true)
   }, [playing])
 
+  // Remember where she is, for the Continue watching shelf. Keyed on the
+  // sentence rather than the clock so it survives a pause, and written on
+  // every step rather than on unmount — a closed tab never unmounts.
+  useEffect(() => {
+    markWatched({ lessonId: lesson.id, sentenceIdx: activeIdx, sentenceCount: sentences.length })
+  }, [lesson.id, activeIdx, sentences.length])
+
   // A deep link only knows the index; the seek has to wait for the player.
   const seekedToStart = useRef(false)
   useEffect(() => {
@@ -151,21 +171,16 @@ function Reader({ lesson, startIdx }: { lesson: LessonDetail; startIdx: number }
     if (activeIdx !== 0) controls.seekMs(sentences[activeIdx].start_ms)
   }, [ready, activeIdx, sentences, controls])
 
-  // Reset the auto-pause latch whenever we (re)enter the active sentence.
-  useEffect(() => {
-    if (active && currentMs < active.end_ms) pausedAtEnd.current = false
-  }, [currentMs, active])
-
   const goTo = useCallback(
     (idx: number) => {
       const clamped = Math.max(0, Math.min(sentences.length - 1, idx))
       setActiveIdx(clamped)
       setSelected(null) // the card belongs to the sentence we're leaving
-      pausedAtEnd.current = false
+      clip.reset()
       controls.seekMs(sentences[clamped].start_ms)
       controls.play()
     },
-    [sentences, controls],
+    [sentences, controls, clip],
   )
 
   // Tapping a word in the transcript both jumps there and opens its card.
@@ -186,11 +201,11 @@ function Reader({ lesson, startIdx }: { lesson: LessonDetail; startIdx: number }
     // If we're outside the active sentence (e.g. auto-paused at its end),
     // replay it from the start; otherwise resume in place.
     if (currentMs < active.start_ms || currentMs >= active.end_ms) {
-      pausedAtEnd.current = false
+      clip.reset()
       controls.seekMs(active.start_ms)
     }
     controls.play()
-  }, [playing, currentMs, active, controls])
+  }, [playing, currentMs, active, controls, clip])
 
   const changeRate = useCallback(
     (r: number) => {
@@ -216,12 +231,11 @@ function Reader({ lesson, startIdx }: { lesson: LessonDetail; startIdx: number }
       <div className="reader-bar">
         <NeighbourLink lesson={prev} direction="prev" />
         <div className="reader-title">
-          <div className="lesson-title">{lesson.title}</div>
-          {position && (
-            <span className="muted small">
-              {position.index} / {position.total} in library
-            </span>
-          )}
+          <div className="lesson-title">{clipTitle(lesson)}</div>
+          <span className="muted small">
+            {showOf(lesson).label}
+            {position && ` · ${position.index} of ${position.total} in the library`}
+          </span>
         </div>
         <NeighbourLink lesson={next} direction="next" />
       </div>
@@ -263,7 +277,9 @@ function Reader({ lesson, startIdx }: { lesson: LessonDetail; startIdx: number }
               <p className="muted small">Subtitles off</p>
             ) : (
               <>
-                {showEn && <TappableSentence sentence={active} onWordTap={setSelected} />}
+                {showEn && (
+                  <TappableSentence sentence={active} onWordTap={setSelected} status={status} />
+                )}
                 {showZh && <p className="subtitle-zh">{active.text_zh}</p>}
               </>
             )}
@@ -336,6 +352,7 @@ function Reader({ lesson, startIdx }: { lesson: LessonDetail; startIdx: number }
 
         {/* Full transcript — click a sentence to jump, a word for its card */}
         <aside className="reader-side">
+          <WordStatusLegend sentences={sentences} status={status} signedIn={!!user} />
           <ol className="transcript">
             {sentences.map((s, i) => (
               <li
@@ -348,6 +365,7 @@ function Reader({ lesson, startIdx }: { lesson: LessonDetail; startIdx: number }
                   sentence={s}
                   className="sentence-en"
                   onWordTap={(token) => jumpAndSelect(i, token)}
+                  status={status}
                 />
                 {showZh && <span className="sentence-zh muted small">{s.text_zh}</span>}
               </li>

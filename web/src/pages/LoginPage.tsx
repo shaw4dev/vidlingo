@@ -17,10 +17,13 @@ export function LoginPage() {
   const { login, register } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
-  // Where the guard sent us from, so signing in returns there instead of home.
-  const from = (location.state as { from?: string } | null)?.from ?? '/'
+  // Where the guard sent us from, so signing in returns there instead of home,
+  // and which form to open on — the header's "Sign up free" and the gates ask
+  // for the register tab by name rather than making her find it.
+  const nav = location.state as { from?: string; mode?: 'login' | 'register' } | null
+  const from = nav?.from ?? '/'
 
-  const [mode, setMode] = useState<'login' | 'register'>('login')
+  const [mode, setMode] = useState<'login' | 'register'>(nav?.mode ?? 'login')
   const [username, setUsername] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -43,9 +46,15 @@ export function LoginPage() {
     setError(null)
     setBusy(true)
     try {
-      if (registering) await register(username, email, password)
-      else await login(username, password)
-      navigate(from, { replace: true })
+      if (registering) {
+        await register(username, email, password)
+        // A brand-new account goes through onboarding first; it carries the
+        // original destination so the detour still ends where she was going.
+        navigate('/welcome', { replace: true, state: { from } })
+      } else {
+        await login(username, password)
+        navigate(from, { replace: true })
+      }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Something went wrong. Please try again.')
     } finally {

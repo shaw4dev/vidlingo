@@ -9,6 +9,7 @@ import { Link, useLocation } from 'react-router-dom'
 import { useAuth } from '../../auth/AuthContext'
 import { api, ApiError } from '../../lib/api'
 import { pronounce } from '../../lib/tts'
+import { noteWordSaved } from '../vocab/useVocabIndex'
 import { useDefinition } from './useDefinition'
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error'
@@ -45,12 +46,16 @@ export function WordCard({
       .addVocab({ lemma, surface, source_sentence_id: sentenceId })
       .then(() => {
         setSave('saved')
+        // Tint it everywhere immediately — re-fetching the whole list to learn
+        // a fact we just caused would make the colour arrive a round trip late.
+        noteWordSaved(lemma)
         void refresh() // keep the account page's counter honest
       })
       .catch((err) => {
         // Already in her list is a success from her point of view, not an error.
         if (err instanceof ApiError && err.status === 409) {
           setSave('saved')
+          noteWordSaved(lemma)
           return
         }
         setSave('error')
@@ -121,14 +126,17 @@ export function WordCard({
             {save === 'saved' ? '✓ In your vocab' : save === 'saving' ? 'Saving…' : '+ Add to vocab'}
           </button>
         ) : (
-          // Not an error state: saving genuinely needs an account, and saying
-          // so up front beats a 401 after the click.
+          // Not an error state, and not a wall either: looking the word up
+          // already worked. This is the one thing in the card that cannot work
+          // without a person to attach it to, and it says which thing and why
+          // rather than returning a 401 after the click.
           <Link
             className="btn-inline"
             to="/login"
-            state={{ from: location.pathname + location.search }}
+            state={{ from: location.pathname + location.search, mode: 'register' }}
+            title="Saved words sync across devices and come back as review"
           >
-            Log in to save
+            + Save this word — free account
           </Link>
         )}
         {showMoreVideos && (
