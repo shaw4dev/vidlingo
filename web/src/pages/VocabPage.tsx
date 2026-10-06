@@ -7,6 +7,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { AppHeader } from '../components/AppHeader'
+import { useReviewSummary } from '../features/review/useReviewSummary'
 import { api, ApiError, type Mastery, type VocabItem } from '../lib/api'
 
 // The order the filter chips appear in, weakest first. It used to double as a
@@ -19,6 +20,7 @@ const MASTERY_LABELS: Record<Mastery, string> = {
 }
 
 export function VocabPage() {
+  const review = useReviewSummary()
   const [items, setItems] = useState<VocabItem[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [filter, setFilter] = useState<Mastery | null>(null)
@@ -57,6 +59,12 @@ export function VocabPage() {
       <AppHeader />
 
       <h2>My words</h2>
+
+      {review && review.scheduled_today > 0 && (
+        <Link className="review-banner" to="/review">
+          今日安排 {review.scheduled_today} 个复习 →
+        </Link>
+      )}
 
       {items && items.length > 0 && (
         <div className="filters">
