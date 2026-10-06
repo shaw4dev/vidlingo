@@ -63,3 +63,10 @@ docs/
 # Local nginx build used to rehearse the reverse proxy config before it went
 # to the VPS. A downloaded Windows binary distribution, not project source.
 nginx-*/
+
+# Eval harness run reports (backend/app/evals) - regenerable, timestamped local
+# artifacts, not the golden datasets or code. CI/production would keep a real
+# history of these (a build artifact, a small dashboard); local runs shouldn't
+# pile up in git.
+backend/app/evals/results/*.json
+!backend/app/evals/results/.gitkeep
