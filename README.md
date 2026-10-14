@@ -36,6 +36,11 @@ Render — two deployments on deliberately different stacks, described in
 Design docs: [`PRD_v1.md`](PRD_v1.md),
 [`architecture.md`](architecture.md), [`tasks.md`](tasks.md).
 
+## Screenshots
+| Library | Reader |
+| --- | --- |
+| ![Library — browse real clips by level and category](assets/screenshots/library.jpg) | ![Reader — bilingual, tappable transcript synced to the video](assets/screenshots/reader.jpg) |
+
 ## Repo layout
 ```
 backend/     FastAPI modular monolith (architecture.md §5)
