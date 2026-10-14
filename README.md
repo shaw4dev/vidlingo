@@ -37,9 +37,11 @@ Design docs: [`PRD_v1.md`](PRD_v1.md),
 [`architecture.md`](architecture.md), [`tasks.md`](tasks.md).
 
 ## Screenshots
+![Explore — the landing page: a TED hero, how-it-works demo, and shows to browse](assets/screenshots/explore.jpg)
+
 | Library | Reader |
 | --- | --- |
-| ![Library — browse real clips by level and category](assets/screenshots/library.jpg) | ![Reader — bilingual, tappable transcript synced to the video](assets/screenshots/reader.jpg) |
+| ![Library — browse real clips by level and show](assets/screenshots/library.jpg) | ![Reader — bilingual, tappable transcript synced to the video](assets/screenshots/reader.jpg) |
 
 ## Repo layout
 ```
